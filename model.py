@@ -244,11 +244,11 @@ class MLP(nn.Module):
         new_layer.add_module(layer_name, self.net)
         self.net = new_layer
 
-    # This function takes an input and predicts the class, (0 or 1)
-
     def predict(self, x):
+        # This function takes an input and predicts the class label, (0 or 1)
         pred = self.forward(x)
-        ans = torch.round(torch.sigmoid(pred))
+        #ans = torch.round(torch.sigmoid(pred))
+        ans = torch.round(pred)
         return ans  # torch.tensor(ans, dtype=torch.long)
 
     def forward(self, x):
