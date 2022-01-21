@@ -44,6 +44,8 @@ class Trainer():
 
         with torch.no_grad():
             reconst, z = self.model.autoencoder(batch_data)
+            # predict class label from latent dimension
+            pred_y = self.model.classifier(z)
 
         adv_input = z
 
@@ -53,10 +55,7 @@ class Trainer():
             # for equalized odds, the adversary also receives the class label
             adv_input = torch.cat(
                 (z, label_y.view(label_y.shape[0], 1)), 1)
-
-        # predict class label from latent dimension
-        pred_y = self.model.classifier(z)
-
+ 
         cl_error = self.model.get_class_loss(pred_y, label_y)
         rec_error = self.model.get_recon_loss(reconst, batch_data)
 
@@ -76,7 +75,7 @@ class Trainer():
         if epoch:
             print('Train Adversary Epoch: {}\tLoss: {:.6f}'.format(epoch + 1,  error))
 
-        return error
+        return avd_error
 
     def train_autoencoder(self, num_epochs):
         for epoch in range(num_epochs):
@@ -219,12 +218,11 @@ class Trainer():
                 # for equalized odds, the adversary also receives the class label
                 if isinstance(self.model, EqualOddModel):
                     adv_input = torch.cat(
-                        (z, label_y.view(label_y.shape[0], 1)), 1)
-
-                # predict sentive attribut from Z
-                pred_a = self.model.adversary(adv_input)  # fixed adversary
+                        (z, label_y.view(label_y.shape[0], 1)), 1) 
                 # compute the adversary loss
-                with torch.no_grad():
+                with torch.no_grad(): 
+                    # predict sentive attribut from Z
+                    pred_a = self.model.adversary(adv_input)  # fixed adversary
                     adv_loss = self.model.get_adv_loss(pred_a, sensitive_a)
 
                 # compute the classification loss
@@ -243,11 +241,14 @@ class Trainer():
                 self.class_op.step()
                 self.gen_op.step()
 
+                adv_loss = 0
                 # train the adversary
                 for t in range(10):
                     #print("update adversary iter=", t)
-                    adv_loss = self.train_adversary_on_batch(
-                        train_data, sensitive_a, label_y, t)
+                    adv_loss += self.train_adversary_on_batch(
+                        train_data, sensitive_a, label_y)
+                
+                adv_loss = adv_loss / 10
 
                 loss_log += train_loss.item()
                 clas_loss_log += class_loss.item()

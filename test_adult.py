@@ -70,8 +70,7 @@ hidden_layers = {'class': 8, 'avd': 8, 'ae': 8}
 data_loader = DataLoader(training_data, batch_size=64, shuffle=True)
 test_data_loader = DataLoader(test_data, batch_size=64, shuffle=True)
 
-lfr_u = DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, recon_weight=0,
-                    adv_weight=1, hidden_layers={'class': 20, 'ae': 20, 'avd': 20})
+lfr_u = DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, recon_weight=0, adv_weight=0, hidden_layers={'class': 20, 'ae': 20, 'avd': 20})
 
 trainer = Trainer(lfr_u, data_loader, DATA_SET_NAME, "LFR")
 trainer.train(50)
@@ -87,7 +86,7 @@ acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_test.cpu().detach(
 results["LR"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)], [
                  np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
 
-X_transformed = trainer.model.transform(X_test.to(device))
+X_transformed = lfr_u.transform(X_test.to(device))
 clr = LogisticRegression(max_iter=1000)
 acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_transformed.cpu().detach(
 ).numpy(), y_test.cpu().detach().numpy(), kfold, S_test.cpu().detach().numpy())

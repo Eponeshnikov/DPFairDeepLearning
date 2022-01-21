@@ -109,8 +109,7 @@ class DemParModel(AbstractModel):
         return fn_bce_criteria(y_pred, y)
 
     def get_loss(self, recon_loss, class_loss, adv_loss, Y=None):
-        loss = self.recon_weight*recon_loss + self.class_weight * \
-            class_loss + self.adv_weight*adv_loss
+        loss = self.recon_weight*recon_loss + self.class_weight*class_loss + self.adv_weight*adv_loss
         return loss
 
     def transform(self, data):
@@ -162,8 +161,7 @@ class EqualOppModel(DemParModel):
 
     def get_loss(self, recon_loss, class_loss, adv_loss, Y=None):
         """ Similare to DemParModel but with Y = 0, this will enfore P(Y^=1|S, Y=1)"""
-        loss = self.recon_weight*recon_loss + self.class_weight * \
-            class_loss + self.adv_weight*adv_loss
+        loss = self.recon_weight*recon_loss + self.class_weight *class_loss + self.adv_weight*adv_loss
         if Y != None:
             loss = torch.multiply(1-Y, loss)
         return loss
@@ -253,7 +251,7 @@ class MLP(nn.Module):
 
     def forward(self, x):
         x = self.net(x)
-        x = torch.sigmoid(x)
+        x = self.sigmoid(x)
         return x.squeeze(1)
 
 
