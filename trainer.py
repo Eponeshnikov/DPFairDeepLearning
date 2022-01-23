@@ -1,9 +1,11 @@
-
 import torch
 from torch import nn, optim
 from torch.autograd import Variable
 from utils import Logger
+from fastprogress.fastprogress import master_bar, progress_bar
+from tqdm import tqdm
 from model import EqualOddModel
+from ipywidgets import IntProgress
 import numpy as np
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -55,7 +57,7 @@ class Trainer():
             # for equalized odds, the adversary also receives the class label
             adv_input = torch.cat(
                 (z, label_y.view(label_y.shape[0], 1)), 1)
- 
+
         cl_error = self.model.get_class_loss(pred_y, label_y)
         rec_error = self.model.get_recon_loss(reconst, batch_data)
 
@@ -73,7 +75,7 @@ class Trainer():
         self.adver_op.step()
 
         if epoch:
-            print('Train Adversary Epoch: {}\tLoss: {:.6f}'.format(epoch + 1,  error))
+            print('Train Adversary Epoch: {}\tLoss: {:.6f}'.format(epoch + 1, error))
 
         return avd_error
 
@@ -94,12 +96,12 @@ class Trainer():
 
                 rec_loss.backward()
                 self.gen_op.step()
-                train_loss += rec_loss.item()*train_data.size(0)
+                train_loss += rec_loss.item() * train_data.size(0)
 
             # print avg training statistics
-            train_loss = train_loss/len(self.data)
+            train_loss = train_loss / len(self.data)
             print('Epoch: {}/{} \tTraining Loss: {:.6f}'.format(epoch +
-                  1, num_epochs, train_loss))
+                                                                1, num_epochs, train_loss))
 
     def train2(self, num_epochs=1000):
         """Train with alternate gradient
@@ -108,6 +110,7 @@ class Trainer():
             num_epochs (int, optional): Number of epoch. Defaults to 1000.
         """
         U = False
+
         for epoch in range(num_epochs):  # loop over dataset
             adv_loss_log = 0
             loss_log = 0
@@ -165,7 +168,7 @@ class Trainer():
 
                 # train the adversary
                 # for t in range(2):
-                #adv_loss = self.train_adversary_on_batch( train_data, sensitive_a, label_y)
+                # adv_loss = self.train_adversary_on_batch( train_data, sensitive_a, label_y)
 
                 loss_log += train_loss.item()
                 clas_loss_log += class_loss.item()
@@ -173,7 +176,7 @@ class Trainer():
                 adv_loss_log += adv_loss.item()
                 # print(train_loss)
                 # if(n_batch) % 100 == 0:
-                #print("epoch : {}/{}, batch = {}, loss = {:.6f}".format(epoch + 1, num_epochs, n_batch, loss_log))
+                # print("epoch : {}/{}, batch = {}, loss = {:.6f}".format(epoch + 1, num_epochs, n_batch, loss_log))
             # epoch loss
             loss_log = loss_log / len(self.data)
             rec_loss_log = rec_loss_log / len(self.data)
@@ -184,7 +187,8 @@ class Trainer():
             # display the epoch training loss
             print("epoch : {}/{}, loss = {:.6f}, adv_loss:{:.6f}, class_loss:{:.6f}, rec_loss:{:.6f}".format(
                 epoch + 1, num_epochs, loss_log, adv_loss_log, clas_loss_log, rec_loss_log))
-        #self.logger.save_model(self.model.autoencoder, self.name)
+
+        # self.logger.save_model(self.model.autoencoder, self.name)
         self.logger.close()
 
     def train(self, num_epochs=1000):
@@ -193,11 +197,18 @@ class Trainer():
         Args:
             num_epochs (int, optional): [description]. Defaults to 1000.
         """
-        for epoch in range(num_epochs):  # loop over dataset
+        mb = master_bar(range(1, num_epochs + 1))
+        mb_ = master_bar(range(1, num_epochs + 1))
+        adv_loss_log_arr = []
+        loss_log_arr = []
+        clas_loss_log_arr = []
+        rec_loss_log_arr = []
+        for epoch in tqdm(zip(mb, mb_)):  # loop over dataset
             adv_loss_log = 0
             loss_log = 0
             clas_loss_log = 0
             rec_loss_log = 0
+
             for n_batch, (train_x, label_y, sensitive_a) in enumerate(self.data):
                 train_data = Variable(train_x)
 
@@ -218,9 +229,9 @@ class Trainer():
                 # for equalized odds, the adversary also receives the class label
                 if isinstance(self.model, EqualOddModel):
                     adv_input = torch.cat(
-                        (z, label_y.view(label_y.shape[0], 1)), 1) 
+                        (z, label_y.view(label_y.shape[0], 1)), 1)
                 # compute the adversary loss
-                with torch.no_grad(): 
+                with torch.no_grad():
                     # predict sentive attribut from Z
                     pred_a = self.model.adversary(adv_input)  # fixed adversary
                     adv_loss = self.model.get_adv_loss(pred_a, sensitive_a)
@@ -244,36 +255,63 @@ class Trainer():
                 adv_loss = 0
                 # train the adversary
                 for t in range(10):
-                    #print("update adversary iter=", t)
+                    # print("update adversary iter=", t)
                     adv_loss += self.train_adversary_on_batch(
                         train_data, sensitive_a, label_y)
-                
+
                 adv_loss = adv_loss / 10
 
                 loss_log += train_loss.item()
                 clas_loss_log += class_loss.item()
                 rec_loss_log += rec_loss.item()
                 adv_loss_log += adv_loss.item()
+
                 # print(train_loss)
                 # if(n_batch) % 100 == 0:
-                #print("epoch : {}/{}, batch = {}, loss = {:.6f}".format(epoch + 1, num_epochs, n_batch, loss_log))
+                # print("epoch : {}/{}, batch = {}, loss = {:.6f}".format(epoch + 1, num_epochs, n_batch, loss_log))
 
             else:
                 # test error
-                #print(sensitive_a, pred_a)
-                #self.test(test_data_loader, num_epochs, epoch, n_batch)
+                # print(sensitive_a, pred_a)
+                # self.test(test_data_loader, num_epochs, epoch, n_batch)
                 pass
             # epoch loss
             loss_log = loss_log / len(self.data)
             rec_loss_log = rec_loss_log / len(self.data)
             adv_loss_log = adv_loss_log / len(self.data)
             clas_loss_log = clas_loss_log / len(self.data)
+
+            loss_log_arr.append(loss_log)
+            rec_loss_log_arr.append(rec_loss_log)
+            adv_loss_log_arr.append(adv_loss_log)
+            clas_loss_log_arr.append(clas_loss_log)
+
+            x = np.arange(1, epoch[0] + 1)
+            y = np.concatenate((loss_log_arr, adv_loss_log_arr))
+            y_ = np.concatenate((clas_loss_log_arr, rec_loss_log_arr))
+            graphs = [[x, loss_log_arr], [x, adv_loss_log_arr]]
+            graphs_ = [[x, clas_loss_log_arr], [x, rec_loss_log_arr]]
+            mb.names = ['loss', 'adv_loss']
+            mb_.names = ['class_loss', 'rec_loss']
+            y_margin = 0.1
+            x_bounds = [0, epoch[0] + 1]
+            y_bounds = [np.min(y) - y_margin, np.max(y) + y_margin]
+            y_bounds_ = [np.min(y_) - y_margin, np.max(y_) + y_margin]
+            # print(y.shape)
+
+            mb.update_graph(graphs, x_bounds, y_bounds)
+            mb_.update_graph(graphs_, x_bounds, y_bounds_)
+
+
             self.logger.log(rec_loss_log, clas_loss_log,
-                            adv_loss_log, epoch, num_epochs, len(self.data))
+                            adv_loss_log, epoch[0], num_epochs, len(self.data))
             # display the epoch training loss
-            print("epoch : {}/{}, loss = {:.6f}, adv_loss:{:.6f}, class_loss:{:.6f}, rec_loss:{:.6f}".format(
-                epoch + 1, num_epochs, loss_log, adv_loss_log, clas_loss_log, rec_loss_log))
-        #self.logger.save_model(self.model.autoencoder, self.name)
+            # print("epoch : {}/{}, loss = {:.6f}, adv_loss:{:.6f}, class_loss:{:.6f}, rec_loss:{:.6f}".format(
+            #    epoch + 1, num_epochs, loss_log, adv_loss_log, clas_loss_log, rec_loss_log))
+
+            # self.plot_loss_update(epoch, num_epochs, mb, loss_log_arr, adv_loss_log_arr, clas_loss_log_arr,
+            #                      rec_loss_log_arr)
+        # self.logger.save_model(self.model.autoencoder, self.name)
         self.logger.close()
 
     def test(self, test_data_loader, num_epochs, epoch, n_batch):
@@ -317,14 +355,14 @@ class Trainer():
                 adv_test_loss += model.get_adv_loss(pred_a,
                                                     sensitive_a.unsqueeze(1))
 
-                #test_loss += self.model.get_loss(rec_test_loss, class_test_loss, adv_test_loss, label_y).item()
+                # test_loss += self.model.get_loss(rec_test_loss, class_test_loss, adv_test_loss, label_y).item()
             # test_loss = test_loss / len(test_data_loader) #model.get_loss(rec_lthe Equal Opportunity fairness constraint (Hardt, Price, andSrebro 2016) combined with ERM will provably recover the Bayes Optimal Classifierunder a range of bias modelsoss, class_loss, adv_loss, label_y)
             adv_test_loss = adv_test_loss.item() / len(test_data_loader)
             class_test_loss = class_test_loss.item() / len(test_data_loader)
             rec_test_loss = rec_test_loss.item() / len(test_data_loader)
             self.logger.log(rec_test_loss, class_test_loss, adv_test_loss,
                             epoch, n_batch, len(test_data_loader), description='test')
-            #print("test_epoch : {}/{}, loss:{:.6f} , adv_loss:{:.6f}, class_loss:{:.6f}, rec_loss:{:.6f}".format(epoch + 1, num_epochs, test_loss, rec_test_loss, class_test_loss, rec_test_loss))
+            # print("test_epoch : {}/{}, loss:{:.6f} , adv_loss:{:.6f}, class_loss:{:.6f}, rec_loss:{:.6f}".format(epoch + 1, num_epochs, test_loss, rec_test_loss, class_test_loss, rec_test_loss))
 
 
 def train_classifier(classifier, params, is_avd=False):
