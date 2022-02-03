@@ -5,7 +5,8 @@ from utils import Logger
 from fastprogress.fastprogress import master_bar, progress_bar
 from tqdm import tqdm
 from model import EqualOddModel
-from ipywidgets import IntProgress
+from opacus import PrivacyEngine
+from opacus.validators import ModuleValidator
 import numpy as np
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,12 +24,12 @@ class Trainer():
         """
         self.model = model
         # optimizer for autoencoder nets
-        self.gen_op = optim.Adam(self.model.autoencoder.parameters(), lr=0.001)
+        self.autoencoder_op = optim.Adam(self.model.autoencoder.parameters(), lr=0.001)
         # optimizer for classifier nets
-        self.class_op = optim.Adam(
+        self.classifier_op = optim.Adam(
             self.model.classifier.parameters(), lr=0.001)
         # optimizer for adversary nets
-        self.adver_op = optim.Adam(self.model.adversary.parameters(), lr=0.001)
+        self.adversary_op = optim.Adam(self.model.adversary.parameters(), lr=0.001)
 
         self.data = data
         self.name = model_name  # "{}_{}".format(model_name, model.name)
@@ -42,7 +43,10 @@ class Trainer():
     def train_adversary_on_batch(self, batch_data, sentive_a, label_y, epoch=None):
         """ Train the adversary with fixed classifier-autoencoder """
         # reset gradient
-        self.adver_op.zero_grad()
+        self.model.classifier.eval()
+        self.model.autoencoder.eval()
+        self.model.adversary.train()
+        self.adversary_op.zero_grad()
 
         with torch.no_grad():
             reconst, z = self.model.autoencoder(batch_data)
@@ -72,7 +76,7 @@ class Trainer():
         error.backward()
 
         # update weights with gradients
-        self.adver_op.step()
+        self.adversary_op.step()
 
         if epoch:
             print('Train Adversary Epoch: {}\tLoss: {:.6f}'.format(epoch + 1, error))
@@ -87,7 +91,7 @@ class Trainer():
 
                 train_data = train_data.to(device)
 
-                self.gen_op.zero_grad()
+                self.autoencoder_op.zero_grad()
                 # compute reconstruction and latent space  the
                 reconstructed, _ = self.model.autoencoder(train_data)
 
@@ -95,7 +99,7 @@ class Trainer():
                 rec_loss = self.model.get_recon_loss(reconstructed, train_data)
 
                 rec_loss.backward()
-                self.gen_op.step()
+                self.autoencoder_op.step()
                 train_loss += rec_loss.item() * train_data.size(0)
 
             # print avg training statistics
@@ -124,9 +128,9 @@ class Trainer():
                 sensitive_a = sensitive_a.to(device)
 
                 # reset the gradients back to zero
-                self.gen_op.zero_grad()
-                self.class_op.zero_grad()
-                self.adver_op.zero_grad()
+                self.autoencoder_op.zero_grad()
+                self.classifier_op.zero_grad()
+                self.adversary_op.zero_grad()
 
                 # compute reconstruction and latent space  the
                 reconstructed, z = self.model.autoencoder(train_data)
@@ -155,14 +159,14 @@ class Trainer():
                         rec_loss, class_loss, adv_loss, label_y)
                     # backpropagate the gradient encoder-decoder-classifier with fixed adversary
                     train_loss.backward()
-                    self.class_op.step()
-                    self.gen_op.step()
+                    self.classifier_op.step()
+                    self.autoencoder_op.step()
                 else:
                     train_loss = -self.model.get_loss(
                         rec_loss, class_loss, adv_loss, label_y)
                     # backpropagate the gradient encoder-decoder-classifier with fixed adversary
                     train_loss.backward()
-                    self.adver_op.step()
+                    self.adversary_op.step()
 
                 U = not U
 
@@ -191,6 +195,20 @@ class Trainer():
         # self.logger.save_model(self.model.autoencoder, self.name)
         self.logger.close()
 
+    def train_privacy(self, parts, num_epochs=1000):
+        privacy_engine = PrivacyEngine()
+        MAX_GRAD_NORM = 1.2
+        EPSILON = 50.0
+        DELTA = 1e-5
+        for part in parts:
+            # exec("self.model." + part + " = ModuleValidator.fix(self.model." + part + ")")
+            exec("self.model." + part + ", " + "self." + part + "_op, self.data = "
+                                                                "privacy_engine.make_private_with_epsilon("
+                                                                "module=self.model." + part + ", optimizer=self." +
+                 part + "_op, data_loader=self.data, epochs=num_epochs, target_epsilon=EPSILON, target_delta=DELTA, "
+                        "max_grad_norm=MAX_GRAD_NORM,)")
+        self.train(num_epochs)
+
     def train(self, num_epochs=1000):
         """Train with fixed adversary or classifier-encoder-decoder across epoch
 
@@ -215,10 +233,13 @@ class Trainer():
                 train_data = train_data.to(device)
                 label_y = label_y.to(device)
                 sensitive_a = sensitive_a.to(device)
+                self.model.classifier.train()
+                self.model.autoencoder.train()
+                self.model.adversary.train()
 
                 # reset the gradients back to zero
-                self.gen_op.zero_grad()
-                self.class_op.zero_grad()
+                self.autoencoder_op.zero_grad()
+                self.classifier_op.zero_grad()
 
                 # compute reconstruction and latent space  the
                 reconstructed, z = self.model.autoencoder(train_data)
@@ -249,8 +270,8 @@ class Trainer():
                 train_loss.backward()
 
                 # update parameter of the classifier and the autoencoder
-                self.class_op.step()
-                self.gen_op.step()
+                self.classifier_op.step()
+                self.autoencoder_op.step()
 
                 adv_loss = 0
                 # train the adversary
@@ -301,7 +322,6 @@ class Trainer():
 
             mb.update_graph(graphs, x_bounds, y_bounds)
             mb_.update_graph(graphs_, x_bounds, y_bounds_)
-
 
             self.logger.log(rec_loss_log, clas_loss_log,
                             adv_loss_log, epoch[0], num_epochs, len(self.data))
