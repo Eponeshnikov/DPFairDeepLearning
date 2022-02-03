@@ -71,7 +71,7 @@ test_data_loader = DataLoader(test_data, batch_size=64, shuffle=True)
 
 lfr = DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, recon_weight=0,
                   adv_weight=1, hidden_layers=hidden_layers)
-parts = ["autoencoder", "classifier"]
+parts = ["autoencoder", "classifier", "adversary"]
 trainer4 = Trainer(lfr, data_loader, DATA_SET_NAME, "LFR")
 trainer4.train_privacy(parts, 1000)
 

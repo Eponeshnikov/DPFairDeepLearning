@@ -235,7 +235,7 @@ class Trainer():
                 sensitive_a = sensitive_a.to(device)
                 self.model.classifier.train()
                 self.model.autoencoder.train()
-                self.model.adversary.train()
+                self.model.adversary.eval()
 
                 # reset the gradients back to zero
                 self.autoencoder_op.zero_grad()
