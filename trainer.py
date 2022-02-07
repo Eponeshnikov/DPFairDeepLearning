@@ -13,7 +13,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Trainer():
-    def __init__(self, model, data, data_set_name, model_name):
+    def __init__(self, model, data, data_set_name, model_name, privacy_name):
         """Trainer for adversarial fair representation
 
         Args:
@@ -35,7 +35,7 @@ class Trainer():
         self.name = model_name  # "{}_{}".format(model_name, model.name)
         model.name = self.name
         # Logger(model_name, model_name)
-        self.logger = Logger(model_name, data_set_name)
+        self.logger = Logger(model_name, data_set_name, privacy_name)
 
     def save(self):
         self.logger.save_model(self.model.autoencoder, self.name)
@@ -207,6 +207,7 @@ class Trainer():
                                                                 "module=self.model." + part + ", optimizer=self." +
                  part + "_op, data_loader=self.data, epochs=num_epochs, target_epsilon=EPSILON, target_delta=DELTA, "
                         "max_grad_norm=MAX_GRAD_NORM,)")
+
         self.train(num_epochs)
 
     def train(self, num_epochs=1000):
@@ -215,13 +216,11 @@ class Trainer():
         Args:
             num_epochs (int, optional): [description]. Defaults to 1000.
         """
-        mb = master_bar(range(1, num_epochs + 1))
-        mb_ = master_bar(range(1, num_epochs + 1))
         adv_loss_log_arr = []
         loss_log_arr = []
         clas_loss_log_arr = []
         rec_loss_log_arr = []
-        for epoch in tqdm(zip(mb, mb_)):  # loop over dataset
+        for epoch in tqdm(range(1, num_epochs + 1)):  # loop over dataset
             adv_loss_log = 0
             loss_log = 0
             clas_loss_log = 0
@@ -302,29 +301,8 @@ class Trainer():
             adv_loss_log = adv_loss_log / len(self.data)
             clas_loss_log = clas_loss_log / len(self.data)
 
-            loss_log_arr.append(loss_log)
-            rec_loss_log_arr.append(rec_loss_log)
-            adv_loss_log_arr.append(adv_loss_log)
-            clas_loss_log_arr.append(clas_loss_log)
-
-            x = np.arange(1, epoch[0] + 1)
-            y = np.concatenate((loss_log_arr, adv_loss_log_arr))
-            y_ = np.concatenate((clas_loss_log_arr, rec_loss_log_arr))
-            graphs = [[x, loss_log_arr], [x, adv_loss_log_arr]]
-            graphs_ = [[x, clas_loss_log_arr], [x, rec_loss_log_arr]]
-            mb.names = ['loss', 'adv_loss']
-            mb_.names = ['class_loss', 'rec_loss']
-            y_margin = 0.1
-            x_bounds = [0, epoch[0] + 1]
-            y_bounds = [np.min(y) - y_margin, np.max(y) + y_margin]
-            y_bounds_ = [np.min(y_) - y_margin, np.max(y_) + y_margin]
-            # print(y.shape)
-
-            mb.update_graph(graphs, x_bounds, y_bounds)
-            mb_.update_graph(graphs_, x_bounds, y_bounds_)
-
             self.logger.log(rec_loss_log, clas_loss_log,
-                            adv_loss_log, epoch[0], num_epochs, len(self.data))
+                            adv_loss_log, epoch, num_epochs, len(self.data))
             # display the epoch training loss
             # print("epoch : {}/{}, loss = {:.6f}, adv_loss:{:.6f}, class_loss:{:.6f}, rec_loss:{:.6f}".format(
             #    epoch + 1, num_epochs, loss_log, adv_loss_log, clas_loss_log, rec_loss_log))

@@ -14,33 +14,32 @@ from tensorboardX import SummaryWriter
 
 class Logger:
 
-    def __init__(self, model_name, data_name):
+    def __init__(self, model_name, data_name, privacy_name):
         self.model_name = model_name
         self.data_name = data_name
-
-        self.comment = '{}_{}'.format(model_name, data_name)
+        self.privacy_name = privacy_name
+        self.comment = '_{}_{}'.format(model_name, data_name)
         self.data_subdir = '{}/{}'.format(model_name, data_name)
-
         # TensorBoard
-        self.writer = SummaryWriter(comment=self.comment)
+        self.writer = SummaryWriter(comment=self.comment + '_' + privacy_name)
 
-    def log(self, ae_error, class_error, adv_error, epoch, n_batch, num_batches, description='train'):
+    def log(self, autoencoder_loss, classifier_loss, adversary_loss, epoch, n_batch, num_batches, description='train'):
 
         # var_class = torch.autograd.variable.Variable
-        if isinstance(ae_error, torch.autograd.Variable):
-            ae_error = ae_error.data.cpu().numpy()
-        if isinstance(class_error, torch.autograd.Variable):
-            class_error = class_error.data.cpu().numpy()
-        if isinstance(adv_error, torch.autograd.Variable):
-            adv_error = adv_error.data.cpu().numpy()
+        if isinstance(autoencoder_loss, torch.autograd.Variable):
+            autoencoder_loss = autoencoder_loss.data.cpu().numpy()
+        if isinstance(classifier_loss, torch.autograd.Variable):
+            classifier_loss = classifier_loss.data.cpu().numpy()
+        if isinstance(adversary_loss, torch.autograd.Variable):
+            adversary_loss = adversary_loss.data.cpu().numpy()
 
         step = Logger._step(epoch, n_batch, num_batches)
         self.writer.add_scalar(
-            '_{}/ae_error_{}'.format(self.comment, description), ae_error, step)
+            '_{}/autoencoder_loss'.format(self.comment), autoencoder_loss, step)
         self.writer.add_scalar(
-            '_{}/class_error_{}'.format(self.comment, description), class_error, step)
+            '_{}/classifier_loss'.format(self.comment), classifier_loss, step)
         self.writer.add_scalar(
-            '_{}/adv_error_{}'.format(self.comment, description), adv_error, step)
+            '_{}/adversary_loss'.format(self.comment), adversary_loss, step)
 
     def save_model(self, model, epoch):
         out_dir = './data/models/{}'.format(self.data_subdir)

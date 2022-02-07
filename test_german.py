@@ -1,3 +1,5 @@
+import time
+
 import torch
 from torch import nn, optim
 import pandas as pd
@@ -6,10 +8,10 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from utils import Logger, train_test_split2, DatasetLoader
 from torch.autograd import Variable
-
+import itertools
 import matplotlib.pyplot as plt
 from model import MLP
-
+from joblib import Parallel, delayed
 from fairness_metrics import cross_val_fair_scores
 
 from model import DemParModel, EqualOddModel, EqualOppModel
@@ -22,6 +24,10 @@ from helper import plot_results
 
 def add_sensitive_attribute(X, S):
     return torch.cat((X, S.unsqueeze(1)), 1)
+
+
+def train(trainer_, epochs, parts):
+    trainer_.train_privacy(parts, epochs)
 
 
 df = pd.read_csv('./preprocessing/german.csv')
@@ -37,23 +43,10 @@ X = torch.from_numpy(X).double()
 y = torch.from_numpy(y).double()
 S = torch.from_numpy(S).double()
 
-
-n_feature = X.shape[1]
-latent_dim = 8  # latent dim space as in LAFTR
-DATA_SET_NAME = "German"
-logger = Logger('AutoEncoder', DATA_SET_NAME)
-
-# create dataset loader
-training_data = DatasetLoader(X_train, y_train, S_train)
-test_data = DatasetLoader(X_test, y_test, S_test)
-
-has_gpu = torch.cuda.is_available()
-device = torch.device("cuda" if torch.cuda.is_available else 'cpu')
-
 n_feature = X.shape[1]
 latent_dim = 15  # latent dim space as in LAFTR
 DATA_SET_NAME = "German"
-logger = Logger('AutoEncoder', DATA_SET_NAME)
+# logger = Logger('AutoEncoder', DATA_SET_NAME)
 
 # create dataset loader
 training_data = DatasetLoader(X_train, y_train, S_train)
@@ -64,18 +57,34 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # batch size
 batch_size = 64
 
+parts = ['autoencoder', 'adversary', 'classifier']
+comb_parts = []
+
+for n in range(0, 4):
+    for i in itertools.combinations(parts, n):
+        comb_parts.append(i)
+
 hidden_layers = {'class': 20, 'ae': 20, 'avd': 20}
 
-data_loader = DataLoader(training_data, batch_size=64, shuffle=True)
-test_data_loader = DataLoader(test_data, batch_size=64, shuffle=True)
+data_loaders = [DataLoader(training_data, batch_size=batch_size, shuffle=True) for i in range(len(comb_parts))]
+test_data_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
 
-lfr = DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, recon_weight=0,
-                  adv_weight=1, hidden_layers=hidden_layers)
-parts = ["autoencoder", "classifier", "adversary"]
-trainer4 = Trainer(lfr, data_loader, DATA_SET_NAME, "LFR")
-trainer4.train_privacy(parts, 1000)
+lfrs = [DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, recon_weight=0,
+                    adv_weight=1, hidden_layers=hidden_layers) for i in range(len(comb_parts))]
 
-results = {}
+trainers = []
+for data_loader, lfr, parts in zip(data_loaders, lfrs, comb_parts):
+    trainers.append(Trainer(lfr, data_loader, DATA_SET_NAME, "LFR", '_'.join(parts)))
+
+epochs = [1000 for i in range(len(comb_parts))]
+for t, e, p in zip(trainers, epochs, comb_parts):
+    print('train', 'privacy modules:', ''.join(p))
+    train(t, e, p)
+print(comb_parts)
+# trainer4 = Trainer(lfr, data_loader, DATA_SET_NAME, "LFR")
+# trainer4.train_privacy(parts, 1000)
+
+'''results = {}
 
 kfold = KFold(n_splits=5)
 
@@ -97,4 +106,4 @@ results[lfr.name] = (scores_, std_)
 
 print(results)
 
-plot_results(results)
+plot_results(results)'''
