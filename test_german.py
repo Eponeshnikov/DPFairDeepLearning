@@ -1,33 +1,34 @@
 import time
-
+from threading import Thread
 import torch
-from torch import nn, optim
 import pandas as pd
 from data_processing import preprocessing_german as preprocessing
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from utils import Logger, train_test_split2, DatasetLoader
-from torch.autograd import Variable
 import itertools
-import matplotlib.pyplot as plt
-from model import MLP
-from joblib import Parallel, delayed
-from fairness_metrics import cross_val_fair_scores
 
 from model import DemParModel, EqualOddModel, EqualOppModel
 from trainer import Trainer
 
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score, KFold
-from helper import plot_results
+
+def add_sensitive_attribute(X_, S_):
+    return torch.cat((X_, S_.unsqueeze(1)), 1)
 
 
-def add_sensitive_attribute(X, S):
-    return torch.cat((X, S.unsqueeze(1)), 1)
+def train(trainer_, epochs_, privacy_parts, privacy_args):
+    trainer_.train_process(privacy_parts, privacy_args, epochs_)
 
 
-def train(trainer_, epochs, parts):
-    trainer_.train_privacy(parts, epochs)
+def gen_privacy_name(privacy_parts):
+    name = 'privacy'
+    pr_parts = ['autoencoder', 'adversary', 'classifier']
+    for p in pr_parts:
+        name += ' '
+        name += p
+        name += '='
+        name += 'True' if p in privacy_parts else 'False'
+    return name
 
 
 df = pd.read_csv('./preprocessing/german.csv')
@@ -49,7 +50,7 @@ DATA_SET_NAME = "German"
 # logger = Logger('AutoEncoder', DATA_SET_NAME)
 
 # create dataset loader
-training_data = DatasetLoader(X_train, y_train, S_train)
+train_data = DatasetLoader(X_train, y_train, S_train)
 test_data = DatasetLoader(X_test, y_test, S_test)
 
 has_gpu = torch.cuda.is_available()
@@ -57,53 +58,34 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # batch size
 batch_size = 64
 
-parts = ['autoencoder', 'adversary', 'classifier']
-comb_parts = []
+parts_to_privacy = {'autoencoder': {"MAX_GRAD_NORM": 1.2, "EPSILON": 50, "DELTA": 1e-5},
+                    'adversary': {"MAX_GRAD_NORM": 1.2, "EPSILON": 50, "DELTA": 1e-5},
+                    'classifier': {"MAX_GRAD_NORM": 1.2, "EPSILON": 50, "DELTA": 1e-5}}
+comb_privacy = []
 
 for n in range(0, 4):
-    for i in itertools.combinations(parts, n):
-        comb_parts.append(i)
+    for i in itertools.combinations(parts_to_privacy, n):
+        comb_privacy.append(i)
 
 hidden_layers = {'class': 20, 'ae': 20, 'avd': 20}
 
-data_loaders = [DataLoader(training_data, batch_size=batch_size, shuffle=True) for i in range(len(comb_parts))]
-test_data_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
+train_data_loaders = [DataLoader(train_data, batch_size=batch_size, shuffle=True) for i in range(len(comb_privacy))]
+test_data_loaders = [DataLoader(test_data, batch_size=batch_size, shuffle=True) for i in range(len(comb_privacy))]
+data_loaders = [i for i in zip(train_data_loaders, test_data_loaders)]
 
 lfrs = [DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, recon_weight=0,
-                    adv_weight=1, hidden_layers=hidden_layers) for i in range(len(comb_parts))]
+                    adv_weight=1, hidden_layers=hidden_layers) for i in range(len(comb_privacy))]
 
 trainers = []
-for data_loader, lfr, parts in zip(data_loaders, lfrs, comb_parts):
-    trainers.append(Trainer(lfr, data_loader, DATA_SET_NAME, "LFR", '_'.join(parts)))
+for data_loader, lfr, parts_ in zip(data_loaders, lfrs, comb_privacy):
+    trainers.append(Trainer(lfr, data_loader, DATA_SET_NAME, "LFR", gen_privacy_name(parts_)))
 
-epochs = [1000 for i in range(len(comb_parts))]
-for t, e, p in zip(trainers, epochs, comb_parts):
-    print('train', 'privacy modules:', ''.join(p))
-    train(t, e, p)
-print(comb_parts)
-# trainer4 = Trainer(lfr, data_loader, DATA_SET_NAME, "LFR")
-# trainer4.train_privacy(parts, 1000)
+epochs = [10 for i in range(len(comb_privacy))]
+threads = [Thread(target=train, args=(t, e, p, parts_to_privacy)) for t, e, p in zip(trainers, epochs, comb_privacy)]
 
-'''results = {}
-
-kfold = KFold(n_splits=5)
-
-# Train a Logistic Regression classifier without fairness constraints
-clr = LogisticRegression(max_iter=1000)
-acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_test.cpu().detach(
-).numpy(), y_test.cpu().detach().numpy(), kfold, S_test.cpu().detach().numpy())
-results["LR"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)], [
-                 np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
-
-X_transformed = lfr.transform(X_test.to(device))
-clr = LogisticRegression(max_iter=1000)
-acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_transformed.cpu(
-).detach().numpy(), y_test.cpu().detach().numpy(), kfold, S_test.cpu().detach().numpy())
-scores_ = [np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)]
-std_ = [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)]
-results[lfr.name] = (scores_, std_)
-
-
-print(results)
-
-plot_results(results)'''
+for i, thread in enumerate(threads):
+    print('start thread', i)
+    thread.start()
+for i, thread in enumerate(threads):
+    thread.join()
+    print('end thread', i)

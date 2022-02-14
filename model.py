@@ -45,10 +45,6 @@ class AbstractModel(ABC):
         self.autoencoder.add_stack_layer(
             laten_dim, layer_name)
 
-        #self.classifier.add_input_layer(laten_dim, layer_name)
-
-        #self.adversary.add_input_layer(laten_dim, layer_name)
-
         # define new adversary and classifiers
         self.adversary = MLP(input_dim=laten_dim,
                              out_dim=self.y_dim, hidden_layer=self.hidden_layers['avd'])
