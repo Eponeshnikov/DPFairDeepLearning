@@ -23,6 +23,10 @@ class Logger:
         # TensorBoard
         self.writer = SummaryWriter(comment="_" + self.comment + '_' + privacy_name)
 
+    def log_dict(self, log_dict_, step):
+        for t in log_dict_:
+            self.writer.add_scalar(t, log_dict_[t], step)
+
     def log(self, autoencoder_loss, classifier_loss, adversary_loss, epoch, n_batch, num_batches, description):
 
         # var_class = torch.autograd.variable.Variable
@@ -50,6 +54,7 @@ class Logger:
 
     def close(self):
         self.writer.close()
+
 
     @staticmethod
     def _step(epoch, n_batch, num_batches):
@@ -79,11 +84,11 @@ class DatasetLoader(torch.utils.data.Dataset):
     """ Create traning data iterator """
 
     def __init__(self, feature_X, label_y, sentive_a):
-        self.X = feature_X.double()
-        self.y = label_y.double()
-        self.A = sentive_a.double()
+        self.X = feature_X.float()
+        self.y = label_y.float()
+        self.A = sentive_a.float()
         if type(self.A) == np.ndarray:
-            self.A = torch.from_numpy(self.A).double()
+            self.A = torch.from_numpy(self.A).float()
 
     def __len__(self):
         return len(self.X)

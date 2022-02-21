@@ -89,12 +89,12 @@ def cross_val_fair_score(model, X, y, cv, protected_attrib, scoring='statistical
 def cross_val_fair_scores(model, X, y, cv, protected_attrib, fit_sensitive=False):
     """
     model : class with fit and predict methods
-    X: features matrice
+    X: features matrices
     y: labels
     cv: Kfold cross validation from Sklearn
     protected_attrib: Protected attribute
     scoring : "statistical_parity_score" | "equalized_odds" | "equal_opportunity"
-    fit_sensitive: True if the fit method receive sentive attribute. Only for fairness-aware estimators
+    fit_sensitive: True if the fit method receive sensitive attribute. Only for fairness-aware estimators
     """
     st_scores = []
     equal_odds = []

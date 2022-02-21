@@ -5,8 +5,9 @@ from abc import ABC, abstractmethod
 from utils import Logger
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+use_cuda = True
+device_name = "cuda" if torch.cuda.is_available() and use_cuda else "cpu"
+device = torch.device(device_name)
 fn_rec_criteria = nn.MSELoss()
 fn_bce_criteria = nn.BCELoss()
 
@@ -30,9 +31,9 @@ class AbstractModel(ABC):
         self.classifier = MLP(
             input_dim=latent_dim, out_dim=y_dim, hidden_layer=hidden_layers['class'])
 
-        self.autoencoder = self.autoencoder.double().to(device)
-        self.adversary = self.adversary.double().to(device)
-        self.classifier = self.classifier.double().to(device)
+        self.autoencoder = self.autoencoder.float().to(device)
+        self.adversary = self.adversary.float().to(device)
+        self.classifier = self.classifier.float().to(device)
 
     def add_stack_layer(self, laten_dim=8, layer_name='stack1', freeze_previous_layers=False):
 
@@ -48,10 +49,10 @@ class AbstractModel(ABC):
         # define new adversary and classifiers
         self.adversary = MLP(input_dim=laten_dim,
                              out_dim=self.y_dim, hidden_layer=self.hidden_layers['avd'])
-        self.adversary = self.adversary.double().to(device)
+        self.adversary = self.adversary.float().to(device)
         self.classifier = MLP(
             input_dim=laten_dim, out_dim=self.y_dim, hidden_layer=self.hidden_layers['class'])
-        self.classifier = self.classifier.double().to(device)
+        self.classifier = self.classifier.float().to(device)
 
         self.latent_dim = laten_dim
 
@@ -66,7 +67,7 @@ class AbstractModel(ABC):
         )
         classifier.to(device)
         classifier.add_module("classifier", classifier_layer)
-        return classifier.double()
+        return classifier.float()
 
     @abstractmethod
     def get_adv_loss(self, a_pred, a):
@@ -92,7 +93,8 @@ class DemParModel(AbstractModel):
 
     def __init__(self, n_feature, latent_dim, hidden_layers, recon_weight=1, class_weight=1, adv_weight=1):
         AbstractModel.__init__(self, n_feature=n_feature, latent_dim=latent_dim,
-                               hidden_layers=hidden_layers, recon_weight=recon_weight, class_weight=class_weight, adv_weight=adv_weight)
+                               hidden_layers=hidden_layers, recon_weight=recon_weight, class_weight=class_weight,
+                               adv_weight=adv_weight)
         self.name = "Dem_Par"
 
     def get_adv_loss(self, a_pred, a):
@@ -105,7 +107,7 @@ class DemParModel(AbstractModel):
         return fn_bce_criteria(y_pred, y)
 
     def get_loss(self, recon_loss, class_loss, adv_loss, Y=None):
-        loss = self.recon_weight*recon_loss + self.class_weight*class_loss + self.adv_weight*adv_loss
+        loss = self.recon_weight * recon_loss + self.class_weight * class_loss + self.adv_weight * adv_loss
         return loss
 
     def transform(self, data):
@@ -117,14 +119,15 @@ class EqualOddModel(DemParModel):
 
     def __init__(self, n_feature, latent_dim, hidden_layers, recon_weight=1, class_weight=1, adv_weight=1):
         DemParModel.__init__(self, n_feature=n_feature, latent_dim=latent_dim,
-                             hidden_layers=hidden_layers, recon_weight=recon_weight, class_weight=class_weight, adv_weight=adv_weight)
+                             hidden_layers=hidden_layers, recon_weight=recon_weight, class_weight=class_weight,
+                             adv_weight=adv_weight)
         self.adversary = MLP(input_dim=self.latent_dim + self.y_dim, out_dim=self.y_dim,
                              hidden_layer=hidden_layers['avd'])  # for equalized odds and equal opportunity
 
-        if torch.cuda.is_available():
-            self.adversary = self.adversary.double().cuda()
-        else:
-            self.adversary = self.adversary.double()
+        '''if torch.cuda.is_available() and use_cuda:
+            self.adversary = self.adversary.float().cuda()
+        else:'''
+        self.adversary = self.adversary.float().to(device)
         self.name = "Eq_Odds"
 
     def add_stack_layer(self, laten_dim=8, layer_name='stack1', freeze_previous_layers=False):
@@ -140,11 +143,11 @@ class EqualOddModel(DemParModel):
         # self.adversary.add_input_layer(laten_dim+1)
         self.adversary = MLP(input_dim=laten_dim + self.y_dim, out_dim=self.y_dim,
                              hidden_layer=self.hidden_layers['avd'])
-        self.adversary = self.adversary.double()
+        self.adversary = self.adversary.float()
 
         self.classifier = MLP(
             input_dim=laten_dim, out_dim=self.y_dim, hidden_layer=self.hidden_layers['class'])
-        self.classifier = self.classifier.double().to(device)
+        self.classifier = self.classifier.float().to(device)
 
         self.latent_dim = laten_dim
 
@@ -152,14 +155,15 @@ class EqualOddModel(DemParModel):
 class EqualOppModel(DemParModel):
     def __init__(self, n_feature, latent_dim, hidden_layers, recon_weight=1, class_weight=1, adv_weight=1):
         DemParModel.__init__(self, n_feature=n_feature, latent_dim=latent_dim,
-                             hidden_layers=hidden_layers, recon_weight=recon_weight, class_weight=class_weight, adv_weight=adv_weight)
+                             hidden_layers=hidden_layers, recon_weight=recon_weight, class_weight=class_weight,
+                             adv_weight=adv_weight)
         self.name = "Eq_Opp"
 
     def get_loss(self, recon_loss, class_loss, adv_loss, Y=None):
-        """ Similare to DemParModel but with Y = 0, this will enfore P(Y^=1|S, Y=1)"""
-        loss = self.recon_weight*recon_loss + self.class_weight *class_loss + self.adv_weight*adv_loss
+        """ Similar to DemParModel but with Y = 0, this will enfore P(Y^=1|S, Y=1)"""
+        loss = self.recon_weight * recon_loss + self.class_weight * class_loss + self.adv_weight * adv_loss
         if Y != None:
-            loss = torch.multiply(1-Y, loss)
+            loss = torch.multiply(1 - Y, loss)
         return loss
 
 
@@ -174,25 +178,25 @@ class AutoEncoder(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_layer[-1], self.latent_dim),
             # nn.ReLU(),
-        )
+        ).float()
 
         self.decoder = nn.Sequential(
             nn.Linear(self.latent_dim, hidden_layer[-1]),
             nn.ReLU(),
             nn.Linear(hidden_layer[-1], self.n_feature),
             # nn.ReLU(),
-        )
+        ).float()
 
     def add_stack_layer(self, laten_dim=8, layer_name='stack1'):
         new_layer = nn.Sequential(
             nn.Linear(self.latent_dim, laten_dim),
             nn.ReLU()
-        ).double()
+        ).float()
 
         new_deco_layer = nn.Sequential(
             nn.Linear(laten_dim, self.latent_dim),
             nn.ReLU()
-        ).double()
+        ).float()
 
         new_layer = new_layer.to(device)
         new_deco_layer = new_deco_layer.to(device)
@@ -210,7 +214,7 @@ class AutoEncoder(nn.Module):
 
 class MLP(nn.Module):
     """
-        A multi-layer feed forward network     
+        A multi-layer feed forward network
     """
 
     def __init__(self, input_dim=8, out_dim=1, hidden_layer=20):
@@ -221,15 +225,15 @@ class MLP(nn.Module):
             nn.Linear(self.input_dim, hidden_layer),
             nn.ReLU(),
             nn.Linear(hidden_layer, self.out_dim)
-        )
-        #self.optimizer = optim.Adam(self.parameters(), lr=0.001)
+        ).float()
+        # self.optimizer = optim.Adam(self.parameters(), lr=0.001)
         self.sigmoid = nn.Sigmoid()
 
     def add_input_layer(self, input_dim, layer_name='stack1'):
         new_layer = nn.Sequential(
             nn.Linear(input_dim, self.input_dim),
             nn.ReLU()
-        ).double()
+        ).float()
 
         self.input_dim = input_dim
 
@@ -241,7 +245,7 @@ class MLP(nn.Module):
     def predict(self, x):
         # This function takes an input and predicts the class label, (0 or 1)
         pred = self.forward(x)
-        #ans = torch.round(torch.sigmoid(pred))
+        # ans = torch.round(torch.sigmoid(pred))
         ans = torch.round(pred)
         return ans  # torch.tensor(ans, dtype=torch.long)
 
@@ -258,4 +262,4 @@ def cross_entropy(y_pred, y):
         y]: predicted class scores. 
     Return: the cross entropy loss. 
     """
-    return -torch.mean(torch.mul(y_pred, torch.log(y)) + torch.mul((1-y_pred), torch.log(1-y)))
+    return -torch.mean(torch.mul(y_pred, torch.log(y)) + torch.mul((1 - y_pred), torch.log(1 - y)))
