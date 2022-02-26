@@ -52,7 +52,7 @@ hidden_layers = {'class': 20, 'ae': 20, 'avd': 20}
 n_threads = 0
 parallel_threads = 4
 thread_list = []
-repeats = 1
+repeats = 2
 for j in range(repeats):
     for i in range(len(comb_privacy_eps)):
         n_threads += 1

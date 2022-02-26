@@ -437,9 +437,9 @@ class Trainer:
 
             self.logger.log_metric("ε", "autoencoder", privacy_engines['autoencoder'].get_epsilon(
                             privacy_args['DELTA']), epoch)
-            self.logger.log_metric("ε", "adversary", privacy_engines['autoencoder'].get_epsilon(
+            self.logger.log_metric("ε", "adversary", privacy_engines['adversary'].get_epsilon(
                             privacy_args['DELTA']), epoch)
-            self.logger.log_metric("ε", "classifier", privacy_engines['autoencoder'].get_epsilon(
+            self.logger.log_metric("ε", "classifier", privacy_engines['classifier'].get_epsilon(
                             privacy_args['DELTA']), epoch)
 
         del self.autoencoder_op

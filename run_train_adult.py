@@ -27,7 +27,7 @@ S = torch.from_numpy(S).double()
 n_feature = X.shape[1]
 latent_dim = 8  # latent dim space as in LAFTR
 DATA_SET_NAME = "Adult"
-hidden_layers = {'class': 8, 'avd': 8, 'ae': 8}
+hidden_layers = {'class': 20, 'avd': 20, 'ae': 20}
 
 # logger = Logger('AutoEncoder', DATA_SET_NAME)
 
@@ -38,7 +38,7 @@ test_data = DatasetLoader(X_test, y_test, S_test)
 has_gpu = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # batch size
-batch_size = 128
+batch_size = 256
 
 DELTA = 1 / X_train.shape[0]
 MAX_GRAD_NORM = 1e-2
@@ -73,6 +73,6 @@ lfr = DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, re
                   adv_weight=1, hidden_layers=hidden_layers)
 trainer = Trainer(lfr, [train_data_loader, test_data_loader],
                   DATA_SET_NAME, "LFR")
-epoch = 500
+epoch = 200
 trainer.train_process(comb_privacy_eps[c_n][0], comb_privacy_eps[c_n][1], epoch)
 exit()
