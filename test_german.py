@@ -1,41 +1,8 @@
 import os
-import time
 from threading import Thread
-from multiprocessing import Process
-import torch
 import pandas as pd
-from data_processing import preprocessing_german as preprocessing
-import numpy as np
-from torch.utils.data import Dataset, DataLoader
-from utils import Logger, train_test_split2, DatasetLoader
+from utils import  train_test_split2
 import itertools
-
-from model import DemParModel, EqualOddModel, EqualOppModel
-from trainer import Trainer
-
-
-def add_sensitive_attribute(X_, S_):
-    return torch.cat((X_, S_.unsqueeze(1)), 1)
-
-
-def train(trainer_, epochs_, privacy_parts, privacy_args):
-    trainer_.train_process(privacy_parts, privacy_args, epochs_)
-
-
-def gen_privacy_name(privacy_parts, eps):
-    name = 'privacy'
-    pr_parts = ['autoencoder', 'adversary', 'classifier']
-    eps_flag = True if len(privacy_parts) > 0 else False
-    for p in pr_parts:
-        name += ' '
-        name += p
-        name += '='
-        name += 'True' if p in privacy_parts else 'False'
-    if eps_flag:
-        name += ' ε=' + str(eps)
-    else:
-        name += ' ε=∞'
-    return name
 
 
 df = pd.read_csv('./preprocessing/german.csv')
@@ -52,18 +19,14 @@ n_feature = X.shape[1]
 latent_dim = 15  # latent dim space as in LAFTR
 DATA_SET_NAME = "German"
 
-# batch size
-batch_size = 128
 
 DELTA = 1 / X_train.shape[0]
 MAX_GRAD_NORM = 1.2
-EPSILONS = np.arange(5, 51, 5)
+EPSILONS = [11.5, 3.2, 0.96, 0.72]
 
 privacy_args = []
 for e in EPSILONS:
-    args = {'autoencoder': {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": e, "DELTA": DELTA},
-            'adversary': {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": e, "DELTA": DELTA},
-            'classifier': {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": e, "DELTA": DELTA}}
+    args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": e, "DELTA": DELTA}
     privacy_args.append(args)
 
 parts_to_privacy = ['autoencoder', 'adversary', 'classifier']
@@ -87,20 +50,21 @@ for c in comb_privacy:
 hidden_layers = {'class': 20, 'ae': 20, 'avd': 20}
 
 n_threads = 0
+parallel_threads = 4
 thread_list = []
-print(len(comb_privacy_eps))
-for j in range(4):
+repeats = 2
+for j in range(repeats):
     for i in range(len(comb_privacy_eps)):
         n_threads += 1
-        thread_list.append(Thread(target=os.system, args=('run_train.py ' + str(i),)))
-        if n_threads % 5 == 0 or i*j == (4-1)*(len(comb_privacy_eps)-1):
+        thread_list.append(Thread(target=os.system, args=('run_train_german.py ' + str(i),)))
+
+        if n_threads % parallel_threads == 0 or i * (j + 1) == repeats * (len(comb_privacy_eps) - 1):
             for thread in thread_list:
                 print('thread start')
                 thread.start()
             for thread in thread_list:
                 thread.join()
                 print('thread end')
-            print('='*40)
+            print('=' * 40)
             thread_list = []
             n_threads = 0
-

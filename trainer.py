@@ -1,7 +1,7 @@
 import torch
 from torch import nn, optim
 from torch.autograd import Variable
-from utils import Logger
+from utils import CMLogger
 from progressbar import progressbar
 from model import EqualOddModel
 from opacus import PrivacyEngine
@@ -22,7 +22,7 @@ device = torch.device(device_name)
 
 
 class Trainer:
-    def __init__(self, model, data, data_set_name, model_name, privacy_name):
+    def __init__(self, model, data, data_set_name, model_name):
         """Trainer for adversarial fair representation
 
         Args:
@@ -45,13 +45,14 @@ class Trainer:
         self.name = model_name  # "{}_{}".format(model_name, model.name)
         model.name = self.name
         # Logger(model_name, model_name)
-        self.logger = Logger(model_name, data_set_name, privacy_name)
+        # self.logger = Logger(model_name, data_set_name, privacy_name)
+        self.logger = CMLogger(model_name, data_set_name)
         self.model.autoencoder.float()
         self.model.classifier.float()
         self.model.adversary.float()
 
-    def save(self):
-        self.logger.save_model(self.model.autoencoder, self.name)
+    # def save(self):
+    #   self.logger.save_model(self.model.autoencoder, self.name)
 
     def train_adversary_on_batch(self, batch_data, sensitive_a, label_y):
         """ Train the adversary with fixed classifier-autoencoder """
@@ -195,23 +196,31 @@ class Trainer:
             rec_loss_log = rec_loss_log / len(self.train_data)
             adv_loss_log = adv_loss_log / len(self.train_data)
             clas_loss_log = clas_loss_log / len(self.train_data)
-            self.logger.log(rec_loss_log, clas_loss_log,
-                            adv_loss_log, epoch, num_epochs, len(self.train_data))
+            # self.logger.log(rec_loss_log, clas_loss_log,
+            #                adv_loss_log, epoch, num_epochs, len(self.train_data))
+            self.logger.log_metric("Autoencoder Loss", "train loss", rec_loss_log, epoch)
+            self.logger.log_metric("Adversary Loss", "train loss", adv_loss_log, epoch)
+            self.logger.log_metric("Classifier Loss", "train loss", clas_loss_log, epoch)
             # display the epoch training loss
+
             print("epoch : {}/{}, loss = {:.6f}, adv_loss:{:.6f}, class_loss:{:.6f}, rec_loss:{:.6f}".format(
                 epoch + 1, num_epochs, loss_log, adv_loss_log, clas_loss_log, rec_loss_log))
 
         # self.logger.save_model(self.model.autoencoder, self.name)
-        self.logger.close()
 
     def make_private(self, privacy_modules, privacy_args, num_epochs):
         privacy_engines = {"autoencoder": PrivacyEngine(),
                            "adversary": PrivacyEngine(),
                            "classifier": PrivacyEngine()}
-        # modules = {"autoencoder": {"module": self.model.autoencoder, "optimizer": self.autoencoder_op},
-        #           "adversary": {"module": self.model.adversary, "optimizer": self.adversary_op},
-        #           "classifier": {"module": self.model.classifier, "optimizer": self.classifier_op}
-        #           }
+        private_params = {"Private " + i: i in privacy_modules for i in privacy_engines.keys()}
+        private_params["ε"] = privacy_args["EPSILON"]
+        private_params["δ"] = privacy_args["DELTA"]
+        private_params["MAX_GRAD_NORM"] = privacy_args["MAX_GRAD_NORM"]
+        tags = [i for i in privacy_modules if i in privacy_engines.keys()]
+        if len(tags) > 0:
+            tags.append("ε=" + str(privacy_args["EPSILON"]))
+        self.logger.add_params(private_params)
+        self.logger.task.add_tags(tags)
         for part in privacy_modules:
             if part == 'autoencoder':
                 self.model.autoencoder, self.autoencoder_op, self.train_data = \
@@ -220,9 +229,9 @@ class Trainer:
                         optimizer=self.autoencoder_op,
                         data_loader=self.train_data,
                         epochs=num_epochs,
-                        target_epsilon=privacy_args[part]['EPSILON'],
-                        target_delta=privacy_args[part]['DELTA'],
-                        max_grad_norm=privacy_args[part]['MAX_GRAD_NORM'],
+                        target_epsilon=privacy_args['EPSILON'],
+                        target_delta=privacy_args['DELTA'],
+                        max_grad_norm=privacy_args['MAX_GRAD_NORM'],
                     )
             elif part == 'adversary':
                 self.model.adversary, self.adversary_op, self.train_data = \
@@ -231,9 +240,9 @@ class Trainer:
                         optimizer=self.adversary_op,
                         data_loader=self.train_data,
                         epochs=num_epochs,
-                        target_epsilon=privacy_args[part]['EPSILON'],
-                        target_delta=privacy_args[part]['DELTA'],
-                        max_grad_norm=privacy_args[part]['MAX_GRAD_NORM'],
+                        target_epsilon=privacy_args['EPSILON'],
+                        target_delta=privacy_args['DELTA'],
+                        max_grad_norm=privacy_args['MAX_GRAD_NORM'],
                     )
             elif part == 'classifier':
                 self.model.classifier, self.classifier_op, self.train_data = \
@@ -242,9 +251,9 @@ class Trainer:
                         optimizer=self.classifier_op,
                         data_loader=self.train_data,
                         epochs=num_epochs,
-                        target_epsilon=privacy_args[part]['EPSILON'],
-                        target_delta=privacy_args[part]['DELTA'],
-                        max_grad_norm=privacy_args[part]['MAX_GRAD_NORM'],
+                        target_epsilon=privacy_args['EPSILON'],
+                        target_delta=privacy_args['DELTA'],
+                        max_grad_norm=privacy_args['MAX_GRAD_NORM'],
                     )
         return privacy_engines
 
@@ -402,61 +411,44 @@ class Trainer:
             # train
             total_loss_train, autoencoder_loss_train, \
             adversary_loss_train, classifier_loss_train = self.train()
-            # self.logger.log(autoencoder_loss_train, classifier_loss_train,
-            #                adversary_loss_train, epoch, num_epochs, len(self.train_data), description='train')
-            # test
+            self.logger.log_metric("Autoencoder Loss", "train loss", autoencoder_loss_train, epoch)
+            self.logger.log_metric("Adversary Loss", "train loss", adversary_loss_train, epoch)
+            self.logger.log_metric("Classifier Loss", "train loss", classifier_loss_train, epoch)
+
             total_loss_test, autoencoder_loss_test, \
             adversary_loss_test, classifier_loss_test = self.test()
-            # self.logger.log(autoencoder_loss_test, adversary_loss_test,
-            #                classifier_loss_test, epoch, num_epochs, len(self.test_data), description='test')
+            self.logger.log_metric("Autoencoder Loss", "test loss", autoencoder_loss_test, epoch)
+            self.logger.log_metric("Adversary Loss", "test loss", adversary_loss_test, epoch)
+            self.logger.log_metric("Classifier Loss", "test loss", classifier_loss_test, epoch)
 
             results = self.calc_fair_metrics()
-            # self.logger.writer.add_scalar('Accuracy/mean/Unfair', results['Unfair'][0][0], epoch)
-            # self.logger.writer.add_scalar('Accuracy/mean/' + self.name, results[self.name][0][0], epoch)
-            log_dict = {"Loss/autoencoder/train": autoencoder_loss_train,
-                        "Loss/adversary/train": adversary_loss_train,
-                        "Loss/classifier/train": classifier_loss_train,
-                        "Loss/autoencoder/test": autoencoder_loss_test,
-                        "Loss/adversary/test": adversary_loss_test,
-                        "Loss/classifier/test": classifier_loss_test,
 
-                        "Accuracy/mean/Unfair": results_['Unfair'][0][0],
-                        "Accuracy/mean/" + self.name: results[self.name][0][0],
-                        "Accuracy/std/Unfair": results_['Unfair'][1][0],
-                        "Accuracy/std/" + self.name: results[self.name][1][0],
+            self.logger.log_metric("Accuracy", "Unfair", results_['Unfair'][0][0], epoch)
+            self.logger.log_metric("Accuracy", self.name, results[self.name][0][0], epoch)
 
-                        "Fairness/ΔDP_mean/Unfair": results_['Unfair'][0][1],
-                        "Fairness/ΔDP_mean/" + self.name: results[self.name][0][1],
-                        "Fairness/ΔEOD_mean/Unfair": results_['Unfair'][0][2],
-                        "Fairness/ΔEOD_mean/" + self.name: results[self.name][0][2],
-                        "Fairness/ΔEOP_mean/Unfair": results_['Unfair'][0][3],
-                        "Fairness/ΔEOP_mean/" + self.name: results[self.name][0][3],
+            self.logger.log_metric("ΔDP", "Unfair", results_['Unfair'][0][1], epoch)
+            self.logger.log_metric("ΔDP", self.name, results[self.name][0][1], epoch)
 
-                        "Fairness/ΔDP_std/Unfair": results_['Unfair'][1][1],
-                        "Fairness/ΔDP_std/" + self.name: results[self.name][1][1],
-                        "Fairness/ΔEOD_std/Unfair": results_['Unfair'][1][2],
-                        "Fairness/ΔEOD_std/" + self.name: results[self.name][1][2],
-                        "Fairness/ΔEOP_std/Unfair": results_['Unfair'][1][3],
-                        "Fairness/ΔEOP_std/" + self.name: results[self.name][1][3],
+            self.logger.log_metric("ΔEOD", "Unfair", results_['Unfair'][0][2], epoch)
+            self.logger.log_metric("ΔEOD", self.name, results[self.name][0][2], epoch)
 
-                        "Privacy/ε/autoencoder": privacy_engines['autoencoder'].get_epsilon(
-                            privacy_args['autoencoder']['DELTA']),
-                        "Privacy/ε/adversary": privacy_engines['adversary'].get_epsilon(
-                            privacy_args['adversary']['DELTA']),
-                        "Privacy/ε/classifier": privacy_engines['classifier'].get_epsilon(
-                            privacy_args['classifier']['DELTA']),
-                        }
-            self.logger.log_dict(log_dict, epoch)
-        # self.logger.writer.add_figure('Fairness metrics', figs[1])
-        # self.logger.writer.export_scalars_to_json('./' + str(time.time()) + self.logger.comment + '.json')
-        self.logger.close()
+            self.logger.log_metric("ΔEOP", "Unfair", results_['Unfair'][0][3], epoch)
+            self.logger.log_metric("ΔEOP", self.name, results[self.name][0][3], epoch)
+
+            self.logger.log_metric("ε", "autoencoder", privacy_engines['autoencoder'].get_epsilon(
+                            privacy_args['DELTA']), epoch)
+            self.logger.log_metric("ε", "adversary", privacy_engines['autoencoder'].get_epsilon(
+                            privacy_args['DELTA']), epoch)
+            self.logger.log_metric("ε", "classifier", privacy_engines['autoencoder'].get_epsilon(
+                            privacy_args['DELTA']), epoch)
+
         del self.autoencoder_op
         del self.adversary_op
         del self.classifier_op
         del self.model
         if torch.cuda.is_available() and use_cuda:
             torch.cuda.empty_cache()
-        # torch.cuda.empty_cache()
+
 
 
 '''def train_classifier(classifier, params, is_avd=False):

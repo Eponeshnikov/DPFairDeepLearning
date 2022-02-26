@@ -1,4 +1,6 @@
 import os
+import time
+
 import numpy as np
 import errno
 from IPython import display
@@ -6,13 +8,33 @@ from matplotlib import pyplot as plt
 import torch
 from torch.autograd import Variable
 from tensorboardX import SummaryWriter
+from clearml import Task, Logger, OutputModel
 
 '''
     TensorBoard Data will be stored in './runs' path
 '''
 
 
-class Logger:
+class CMLogger:
+    def __init__(self, model_name, dataset_name):
+        self.task = Task.init(project_name='AI Fairness',
+                              task_name=model_name + '_' + dataset_name + str(time.time()))
+
+        self.user_prop_dict = {"Model name": model_name, "Dataset": dataset_name}
+        self.task.set_parameters_as_dict(self.user_prop_dict)
+        self.params_dictionary = {}
+        self.task.connect(self.params_dictionary)
+        self.logger = Logger.current_logger()
+
+    def log_metric(self, graph_name, metric_name, value, step):
+        self.logger.report_scalar(graph_name, metric_name, value, step)
+
+    def add_params(self, params):
+        self.task.set_parameters_as_dict(params)
+
+
+
+'''class Logger:
 
     def __init__(self, model_name, data_name, privacy_name):
         self.model_name = model_name
@@ -66,7 +88,7 @@ class Logger:
             os.makedirs(directory)
         except OSError as e:
             if e.errno != errno.EEXIST:
-                raise
+                raise'''
 
 
 def train_test_split2(X, y, S, test_size=0.3):
