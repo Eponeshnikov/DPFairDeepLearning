@@ -21,13 +21,15 @@ DATA_SET_NAME = "Adult"
 
 
 DELTA = 1 / X_train.shape[0]
-MAX_GRAD_NORM = 1.2
+MAX_GRAD_NORMS = [1, 1e-2]
 EPSILONS = [11.5, 3.2, 0.96, 0.72]
 
 privacy_args = []
-for e in EPSILONS:
-    args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": e, "DELTA": DELTA}
-    privacy_args.append(args)
+for EPSILON in EPSILONS:
+    for MAX_GRAD_NORM in MAX_GRAD_NORMS:
+        args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": EPSILON, "DELTA": DELTA}
+        privacy_args.append(args)
+
 
 parts_to_privacy = ['autoencoder', 'adversary', 'classifier']
 comb_privacy = []

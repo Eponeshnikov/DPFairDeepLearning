@@ -21,13 +21,14 @@ DATA_SET_NAME = "German"
 
 
 DELTA = 1 / X_train.shape[0]
-MAX_GRAD_NORM = 1.2
+MAX_GRAD_NORMS = [1, 1e-2]
 EPSILONS = [11.5, 3.2, 0.96, 0.72]
 
 privacy_args = []
-for e in EPSILONS:
-    args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": e, "DELTA": DELTA}
-    privacy_args.append(args)
+for EPSILON in EPSILONS:
+    for MAX_GRAD_NORM in MAX_GRAD_NORMS:
+        args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": EPSILON, "DELTA": DELTA}
+        privacy_args.append(args)
 
 parts_to_privacy = ['autoencoder', 'adversary', 'classifier']
 comb_privacy = []
@@ -52,7 +53,7 @@ hidden_layers = {'class': 20, 'ae': 20, 'avd': 20}
 n_threads = 0
 parallel_threads = 4
 thread_list = []
-repeats = 2
+repeats = 5
 for j in range(repeats):
     for i in range(len(comb_privacy_eps)):
         n_threads += 1

@@ -47,6 +47,7 @@ class Trainer:
         # Logger(model_name, model_name)
         # self.logger = Logger(model_name, data_set_name, privacy_name)
         self.logger = CMLogger(model_name, data_set_name)
+        self.logger.task.add_tags(data_set_name)
         self.model.autoencoder.float()
         self.model.classifier.float()
         self.model.adversary.float()
@@ -213,12 +214,14 @@ class Trainer:
                            "adversary": PrivacyEngine(),
                            "classifier": PrivacyEngine()}
         private_params = {"Private " + i: i in privacy_modules for i in privacy_engines.keys()}
-        private_params["ε"] = privacy_args["EPSILON"]
-        private_params["δ"] = privacy_args["DELTA"]
-        private_params["MAX_GRAD_NORM"] = privacy_args["MAX_GRAD_NORM"]
+        if len(privacy_modules) > 0:
+            private_params["ε"] = privacy_args["EPSILON"]
+            private_params["δ"] = privacy_args["DELTA"]
+            private_params["MAX_GRAD_NORM"] = privacy_args["MAX_GRAD_NORM"]
         tags = [i for i in privacy_modules if i in privacy_engines.keys()]
         if len(tags) > 0:
             tags.append("ε=" + str(privacy_args["EPSILON"]))
+            tags.append("grad_norm=" + str(privacy_args["MAX_GRAD_NORM"]))
         self.logger.add_params(private_params)
         self.logger.task.add_tags(tags)
         for part in privacy_modules:

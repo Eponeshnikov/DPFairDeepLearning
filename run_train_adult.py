@@ -25,7 +25,7 @@ y = torch.from_numpy(y).double()
 S = torch.from_numpy(S).double()
 
 n_feature = X.shape[1]
-latent_dim = 8  # latent dim space as in LAFTR
+latent_dim = 15  # latent dim space as in LAFTR
 DATA_SET_NAME = "Adult"
 hidden_layers = {'class': 20, 'avd': 20, 'ae': 20}
 
@@ -38,16 +38,18 @@ test_data = DatasetLoader(X_test, y_test, S_test)
 has_gpu = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # batch size
-batch_size = 256
+batch_size = 64
 
 DELTA = 1 / X_train.shape[0]
-MAX_GRAD_NORM = 1e-2
+MAX_GRAD_NORMS = [1, 1e-2]
 EPSILONS = [11.5, 3.2, 0.96, 0.72]
 
 privacy_args = []
-for e in EPSILONS:
-    args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": e, "DELTA": DELTA}
-    privacy_args.append(args)
+for EPSILON in EPSILONS:
+    for MAX_GRAD_NORM in MAX_GRAD_NORMS:
+        args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": EPSILON, "DELTA": DELTA}
+        privacy_args.append(args)
+
 
 parts_to_privacy = ['autoencoder', 'adversary', 'classifier']
 comb_privacy = []

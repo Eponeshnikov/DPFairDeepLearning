@@ -6,12 +6,10 @@ from torch.utils.data import DataLoader
 from utils import train_test_split2, DatasetLoader
 import itertools
 
-
 from model import DemParModel
 from trainer import Trainer
 
 c_n = int(sys.argv[1])
-
 
 df = pd.read_csv('./preprocessing/german.csv')
 #
@@ -42,13 +40,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 batch_size = 64
 
 DELTA = 1 / X_train.shape[0]
-MAX_GRAD_NORM = 1e-2
+MAX_GRAD_NORMS = [1, 1e-2]
 EPSILONS = [11.5, 3.2, 0.96, 0.72]
 
 privacy_args = []
-for e in EPSILONS:
-    args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": e, "DELTA": DELTA}
-    privacy_args.append(args)
+for EPSILON in EPSILONS:
+    for MAX_GRAD_NORM in MAX_GRAD_NORMS:
+        args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": EPSILON, "DELTA": DELTA}
+        privacy_args.append(args)
+
 
 parts_to_privacy = ['autoencoder', 'adversary', 'classifier']
 comb_privacy = []
@@ -68,15 +68,12 @@ for c in comb_privacy:
                 comb_privacy_eps.append([c, arg])
                 no_privacy = False
 
-
-
 train_data_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 test_data_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 lfr = DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, recon_weight=0,
                   adv_weight=1, hidden_layers=hidden_layers)
 trainer = Trainer(lfr, [train_data_loader, test_data_loader],
                   DATA_SET_NAME, "LFR")
-epoch = 5
-print(comb_privacy_eps[c_n])
-# trainer.train_process(comb_privacy_eps[c_n][0], comb_privacy_eps[c_n][1], epoch)
+epoch = 500
+trainer.train_process(comb_privacy_eps[c_n][0], comb_privacy_eps[c_n][1], epoch)
 exit()

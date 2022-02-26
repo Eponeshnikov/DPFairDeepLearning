@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 import torch
 from torch.autograd import Variable
 from tensorboardX import SummaryWriter
-from clearml import Task, Logger, OutputModel
+from clearml import Task, Logger
 
 '''
     TensorBoard Data will be stored in './runs' path
@@ -31,7 +31,6 @@ class CMLogger:
 
     def add_params(self, params):
         self.task.set_parameters_as_dict(params)
-
 
 
 '''class Logger:
