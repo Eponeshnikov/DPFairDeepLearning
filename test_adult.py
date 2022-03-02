@@ -16,30 +16,39 @@ from trainer import Trainer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score, KFold
 from helper import plot_results
+from adult_process import get_adult_data
 
 
 def add_sensitive_attribute(X, S):
     return torch.cat((X, S.unsqueeze(1)), 1)
 
 
-df = pd.read_csv('./preprocessing/adult.csv')
+""" df = pd.read_csv('./preprocessing/adult.csv')
 #
 S = df['gender_ Male'].values
 del df['gender_ Male']
 X = df.drop('outcome_ >50K', axis=1).values
-y = df['outcome_ >50K'].values
+y = df['outcome_ >50K'].values """
+
+data = get_adult_data("income", "sex", None)
+
+S_train = torch.from_numpy(data["attr_train"]).int()
+S_test = torch.from_numpy(data["attr_test"]).int()
+X_train = torch.from_numpy(data["x_train"]).double()
+X_test = torch.from_numpy(data["x_test"]).double()
+y_train = torch.from_numpy(data["y_train"]).int()
+y_test = torch.from_numpy(data["y_test"]).int()
 
 
-X_train, X_test, y_train, y_test, S_train, S_test = train_test_split2(
+""" X_train, X_test, y_train, y_test, S_train, S_test = train_test_split2(
     X, y, S, test_size=0.3)
 X_s = add_sensitive_attribute(X_train, S_train)
 X = torch.from_numpy(X).double()
 y = torch.from_numpy(y).double()
 S = torch.from_numpy(S).double()
 
-print(X_train.shape, X_s[0:5, 30])
-
-n_feature = X.shape[1]
+print(X_train.shape, X_s[0:5, 30]) """
+n_feature = X_train.shape[1]
 latent_dim = 8  # latent dim space as in LAFTR
 DATA_SET_NAME = "Adult"
 logger = Logger('AutoEncoder', DATA_SET_NAME)
@@ -52,7 +61,7 @@ has_gpu = torch.cuda.is_available()
 
 X_s = add_sensitive_attribute(X_train, S_train)
 
-n_feature = X.shape[1]
+n_feature = X_train.shape[1]
 DATA_SET_NAME = "Adult"
 logger = Logger('AutoEncoder', DATA_SET_NAME)
 
@@ -65,12 +74,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # batch size
 batch_size = 64
 
+
 hidden_layers = {'class': 8, 'avd': 8, 'ae': 8}
 
 data_loader = DataLoader(training_data, batch_size=64, shuffle=True)
 test_data_loader = DataLoader(test_data, batch_size=64, shuffle=True)
 
-lfr_u = DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, recon_weight=0, adv_weight=0, hidden_layers={'class': 20, 'ae': 20, 'avd': 20})
+lfr_u = DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1,
+                    recon_weight=0, adv_weight=1, hidden_layers={'class': 20, 'ae': 20, 'avd': 20})
 
 trainer = Trainer(lfr_u, data_loader, DATA_SET_NAME, "LFR")
 trainer.train(50)
