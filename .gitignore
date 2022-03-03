@@ -1,3 +1,7 @@
 runs
 __pycache__
-preprocessing
+.ipynb_checkpoints
+.idea
+Logs
+/dataset/*
+/preprocessing/*

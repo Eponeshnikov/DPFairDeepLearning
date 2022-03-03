@@ -90,15 +90,16 @@ class CMLogger:
                 raise'''
 
 
-def train_test_split2(X, y, S, test_size=0.3):
+def train_test_split(X, y, S, test_size=0.3):
     split_size = int(X.shape[0] * test_size)
     X_test, y_test, s_test = X[0:split_size, :], y[0:split_size], S[0:split_size]
     X_train, y_train, s_train = X[split_size + 1:, :], y[split_size + 1:], S[split_size + 1:]
-    print("Test size:", split_size)
-    print("X shape:", X_train.shape, "y shape:", y_train.shape)
-    return torch.from_numpy(X_train), torch.from_numpy(X_test), \
-           torch.from_numpy(y_train), torch.from_numpy(y_test), \
-           torch.from_numpy(s_train), torch.from_numpy(s_test)
+    return X_train, X_test, y_train, y_test, s_train, s_test
+
+
+def convert2torch(*arrs):
+    result = [torch.from_numpy(x).float() for x in arrs]
+    return result
 
 
 class DatasetLoader(torch.utils.data.Dataset):
