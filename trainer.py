@@ -33,12 +33,12 @@ class Trainer:
         """
         self.model = model
         # optimizer for autoencoder nets
-        self.autoencoder_op = optim.Adam(self.model.autoencoder.parameters(), lr=0.001)
+        self.autoencoder_op = optim.SGD(self.model.autoencoder.parameters(), lr=0.001)
         # optimizer for classifier nets
-        self.classifier_op = optim.Adam(
+        self.classifier_op = optim.SGD(
             self.model.classifier.parameters(), lr=0.001)
         # optimizer for adversary nets
-        self.adversary_op = optim.Adam(self.model.adversary.parameters(), lr=0.001)
+        self.adversary_op = optim.SGD(self.model.adversary.parameters(), lr=0.001)
 
         self.train_data = data[0]
         self.test_data = data[1]
@@ -51,9 +51,17 @@ class Trainer:
         self.model.autoencoder.float()
         self.model.classifier.float()
         self.model.adversary.float()
+        self.model.autoencoder.apply(self.init_weights)
+        self.model.classifier.apply(self.init_weights)
+        self.model.adversary.apply(self.init_weights)
 
     # def save(self):
     #   self.logger.save_model(self.model.autoencoder, self.name)
+
+    def init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            torch.nn.init.xavier_uniform_(m.weight)
+            m.bias.data.fill_(0.01)
 
     def train_adversary_on_batch(self, batch_data, sensitive_a, label_y):
         """ Train the adversary with fixed classifier-autoencoder """
@@ -242,7 +250,7 @@ class Trainer:
                         module=self.model.adversary,
                         optimizer=self.adversary_op,
                         data_loader=self.train_data,
-                        epochs=num_epochs,
+                        epochs=num_epochs*10,
                         target_epsilon=privacy_args['EPSILON'],
                         target_delta=privacy_args['DELTA'],
                         max_grad_norm=privacy_args['MAX_GRAD_NORM'],
@@ -259,6 +267,22 @@ class Trainer:
                         max_grad_norm=privacy_args['MAX_GRAD_NORM'],
                     )
         return privacy_engines
+
+    def get_grad_norm(self, model_):
+        model = None
+        if model_ == 'autoencoder':
+            model = self.model.autoencoder
+        elif model_ == 'classifier':
+            model = self.model.classifier
+        elif model_ == 'adversary':
+            model = self.model.adversary
+        total_norm = 0
+        parameters = [p for p in model.parameters() if p.grad is not None and p.requires_grad]
+        for p in parameters:
+            param_norm = p.grad.detach().data.norm(2)
+            total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+        return total_norm
 
     def train(self):
         """Train with fixed adversary or classifier-encoder-decoder across epoch
@@ -411,6 +435,10 @@ class Trainer:
         results_["Unfair"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
                               [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
         for epoch in progressbar(range(1, num_epochs + 1)):  # loop over dataset
+            grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
+            self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], epoch)
+            self.logger.log_metric("Gradient norms", "Classifier", grad_norms[1], epoch)
+            self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], epoch)
             # train
             total_loss_train, autoencoder_loss_train, \
             adversary_loss_train, classifier_loss_train = self.train()
@@ -439,11 +467,11 @@ class Trainer:
             self.logger.log_metric("ΔEOP", self.name, results[self.name][0][3], epoch)
 
             self.logger.log_metric("ε", "autoencoder", privacy_engines['autoencoder'].get_epsilon(
-                            privacy_args['DELTA']), epoch)
+                privacy_args['DELTA']), epoch)
             self.logger.log_metric("ε", "adversary", privacy_engines['adversary'].get_epsilon(
-                            privacy_args['DELTA']), epoch)
+                privacy_args['DELTA']), epoch)
             self.logger.log_metric("ε", "classifier", privacy_engines['classifier'].get_epsilon(
-                            privacy_args['DELTA']), epoch)
+                privacy_args['DELTA']), epoch)
 
         del self.autoencoder_op
         del self.adversary_op
@@ -451,7 +479,6 @@ class Trainer:
         del self.model
         if torch.cuda.is_available() and use_cuda:
             torch.cuda.empty_cache()
-
 
 
 '''def train_classifier(classifier, params, is_avd=False):

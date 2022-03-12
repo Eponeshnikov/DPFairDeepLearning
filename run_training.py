@@ -18,7 +18,7 @@ else:
 if len(sys.argv) > 2:
     DATA_SET_NAME = sys.argv[1]
 else:
-    DATA_SET_NAME = 'German'
+    DATA_SET_NAME = 'Adult_1'
 if DATA_SET_NAME == 'German':
     train_data = pd.read_csv("./dataset/german.data.csv")
     X, y, S, data = preprocessing_german(train_data)
@@ -29,6 +29,11 @@ elif DATA_SET_NAME == 'Adult_1':
     test_data = pd.read_csv("./dataset/adult.test.csv")
     X_train, y_train, S_train, data = preprocessing_adult_1(train_data)
     X_test, y_test, S_test, data_ = preprocessing_adult_1(test_data)
+
+elif DATA_SET_NAME == 'Adult_1_s':
+    train_data = pd.read_csv("./dataset/adult.data.csv")
+    X, y, S, data = preprocessing_adult_1(train_data)
+    X_train, X_test, y_train, y_test, S_train, S_test = train_test_split(X, y, S, test_size=0.3)
 
 elif DATA_SET_NAME == 'Adult_2':
     data = preprocessing_adult_2("income", "sex")
@@ -47,7 +52,7 @@ X_train, X_test, y_train, y_test, S_train, S_test = convert2torch(X_train, X_tes
 n_feature = X_train.shape[1]
 latent_dim = 15  # latent dim space as in LAFTR
 
-hidden_layers = {'class': 20, 'avd': 20, 'ae': 20}
+hidden_layers = {'class': 200, 'avd': 200, 'ae': 200}
 
 # create dataset loader
 train_data = DatasetLoader(X_train, y_train, S_train)
@@ -57,10 +62,10 @@ has_gpu = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # batch size
 batch_size = 512
-epoch = 200
+epoch = 1000
 
 DELTA = 1 / X_train.shape[0]
-MAX_GRAD_NORMS = [5]
+MAX_GRAD_NORMS = [200]
 EPSILONS = [11.5, 3.2, 0.96, 0.72]
 
 privacy_args = []
@@ -72,7 +77,7 @@ for EPSILON in EPSILONS:
 parts_to_privacy = ['autoencoder', 'adversary', 'classifier']
 comb_privacy = []
 
-for n in range(0, 2):
+for n in range(0, 1):
     for i in itertools.combinations(parts_to_privacy, n):
         comb_privacy.append(i)
 

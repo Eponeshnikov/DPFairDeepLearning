@@ -5,10 +5,10 @@ import run_training
 comb = run_training.comb_privacy_eps
 
 n_threads = 0
-parallel_threads = 2
+parallel_threads = 1
 thread_list = []
 repeats = 1
-DATA_SET_NAME = 'Adult_2'
+DATA_SET_NAME = 'Adult_1_s'
 for j in range(repeats):
     for i in range(len(comb)):
         n_threads += 1
