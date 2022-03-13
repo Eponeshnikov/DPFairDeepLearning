@@ -48,6 +48,16 @@ class Trainer:
         # self.logger = Logger(model_name, data_set_name, privacy_name)
         self.logger = CMLogger(model_name, data_set_name)
         self.logger.task.add_tags(data_set_name)
+        mainhp = {"Batch size": self.train_data.batch_size,
+                  "Autoencoder neurons": self.model.hidden_layers['ae'],
+                  "Adversary neurons": self.model.hidden_layers['avd'],
+                  "Classifier neurons": self.model.hidden_layers['class'],
+                  "Latent dimension": self.model.latent_dim}
+        tags = [f"batch_size={self.train_data.batch_size}",
+                f"neurons={self.model.hidden_layers['ae']}",
+                f"latent_dim={self.model.latent_dim}"]
+        self.logger.add_params(mainhp)
+        self.logger.task.add_tags(tags)
         self.model.autoencoder.float()
         self.model.classifier.float()
         self.model.adversary.float()
@@ -217,7 +227,7 @@ class Trainer:
 
         # self.logger.save_model(self.model.autoencoder, self.name)
 
-    def make_private(self, privacy_modules, privacy_args, num_epochs):
+    def make_private(self, privacy_modules, privacy_args, adv_on_batch, num_epochs):
         privacy_engines = {"autoencoder": PrivacyEngine(),
                            "adversary": PrivacyEngine(),
                            "classifier": PrivacyEngine()}
@@ -250,7 +260,7 @@ class Trainer:
                         module=self.model.adversary,
                         optimizer=self.adversary_op,
                         data_loader=self.train_data,
-                        epochs=num_epochs*10,
+                        epochs=num_epochs*adv_on_batch,
                         target_epsilon=privacy_args['EPSILON'],
                         target_delta=privacy_args['DELTA'],
                         max_grad_norm=privacy_args['MAX_GRAD_NORM'],
@@ -284,7 +294,7 @@ class Trainer:
         total_norm = total_norm ** 0.5
         return total_norm
 
-    def train(self):
+    def train(self, adv_on_batch):
         """Train with fixed adversary or classifier-encoder-decoder across epoch
         """
 
@@ -337,11 +347,11 @@ class Trainer:
 
             adversary_loss = 0
             # train the adversary
-            for t in range(10):
+            for t in range(adv_on_batch):
                 # print("update adversary iter=", t)
                 adversary_loss += self.train_adversary_on_batch(train_data, sensitive_a, label_y)
 
-            adversary_loss = adversary_loss / 10
+            adversary_loss = adversary_loss / adv_on_batch
 
             total_loss_log += total_loss.item()
             classifier_loss_log += classifier_loss.item()
@@ -415,16 +425,15 @@ class Trainer:
         S_test = self.test_data.dataset.A.cpu().detach().numpy()
 
         X_transformed = self.model.transform(torch.from_numpy(X_test).to(device)).cpu().detach().numpy()
-        clr = LogisticRegression(max_iter=1000)
         acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_transformed, y_test, kfold, S_test)
         results[self.name] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
                               [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
         # figs = plot_results(results, show=False)
         return results
 
-    def train_process(self, privacy_parts, privacy_args, num_epochs=1000):
+    def train_process(self, privacy_parts, privacy_args, adv_on_batch,  num_epochs=1000):
 
-        privacy_engines = self.make_private(privacy_parts, privacy_args, num_epochs)
+        privacy_engines = self.make_private(privacy_parts, privacy_args, adv_on_batch, num_epochs)
         kfold = KFold(n_splits=5)
         clr = LogisticRegression(max_iter=1000)
         X_test = self.test_data.dataset.X.cpu().detach().numpy()
@@ -441,7 +450,7 @@ class Trainer:
             self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], epoch)
             # train
             total_loss_train, autoencoder_loss_train, \
-            adversary_loss_train, classifier_loss_train = self.train()
+            adversary_loss_train, classifier_loss_train = self.train(adv_on_batch)
             self.logger.log_metric("Autoencoder Loss", "train loss", autoencoder_loss_train, epoch)
             self.logger.log_metric("Adversary Loss", "train loss", adversary_loss_train, epoch)
             self.logger.log_metric("Classifier Loss", "train loss", classifier_loss_train, epoch)
@@ -473,10 +482,6 @@ class Trainer:
             self.logger.log_metric("ε", "classifier", privacy_engines['classifier'].get_epsilon(
                 privacy_args['DELTA']), epoch)
 
-        del self.autoencoder_op
-        del self.adversary_op
-        del self.classifier_op
-        del self.model
         if torch.cuda.is_available() and use_cuda:
             torch.cuda.empty_cache()
 

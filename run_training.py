@@ -50,10 +50,19 @@ X_train, X_test, y_train, y_test, S_train, S_test = convert2torch(X_train, X_tes
                                                                   S_test)
 
 n_feature = X_train.shape[1]
-latent_dim = 15  # latent dim space as in LAFTR
+latent_dims = [15*(10**i) for i in range(3)]  # latent dim space as in LAFTR
+adv_on_batchs = np.arange(10, 41, 10)
+hidden_layers_ = [{'class': 20*(10**i), 'avd': 20*(10**i), 'ae': 20*(10**i)} for i in range(3)]
 
-hidden_layers = {'class': 200, 'avd': 200, 'ae': 200}
-
+comb_arch = []
+for latent_dim in latent_dims:
+    for adv_on_batch in adv_on_batchs:
+        for hidden_layers in hidden_layers_:
+            comb_arch.append([latent_dim, adv_on_batch, hidden_layers])
+if len(sys.argv) > 3:
+    architecture = comb_arch[int(sys.argv[3])]
+else:
+    architecture = comb_arch[0]
 # create dataset loader
 train_data = DatasetLoader(X_train, y_train, S_train)
 test_data = DatasetLoader(X_test, y_test, S_test)
@@ -61,7 +70,7 @@ test_data = DatasetLoader(X_test, y_test, S_test)
 has_gpu = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # batch size
-batch_size = 512
+batch_size = 1024
 epoch = 1000
 
 DELTA = 1 / X_train.shape[0]
@@ -95,10 +104,11 @@ for c in comb_privacy:
 if len(sys.argv) > 2:
     train_data_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     test_data_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
-    lfr = DemParModel(n_feature=n_feature, latent_dim=latent_dim, class_weight=1, recon_weight=0,
-                      adv_weight=1, hidden_layers=hidden_layers)
+
+    lfr = DemParModel(n_feature=n_feature, latent_dim=architecture[0], class_weight=1, recon_weight=0,
+                      adv_weight=1, hidden_layers=architecture[2])
     trainer = Trainer(lfr, [train_data_loader, test_data_loader],
                       DATA_SET_NAME, "LFR")
 
-    trainer.train_process(comb_privacy_eps[c_n][0], comb_privacy_eps[c_n][1], epoch)
+    trainer.train_process(comb_privacy_eps[c_n][0], comb_privacy_eps[c_n][1], architecture[1], epoch)
     exit()
