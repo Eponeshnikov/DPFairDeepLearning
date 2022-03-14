@@ -240,7 +240,7 @@ class Trainer:
         if len(tags) > 0:
             tags.append("ε=" + str(privacy_args["EPSILON"]))
             tags.append("grad_norm=" + str(privacy_args["MAX_GRAD_NORM"]))
-        private_params['Adversary on batch'] = adv_on_batch
+        private_params["Adversary on batch"] = int(adv_on_batch)
         tags.append('adv_on_batch=' + str(adv_on_batch))
         self.logger.add_params(private_params)
         self.logger.task.add_tags(tags)
