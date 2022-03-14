@@ -232,11 +232,13 @@ class Trainer:
                            "adversary": PrivacyEngine(),
                            "classifier": PrivacyEngine()}
         private_params = {"Private " + i: i in privacy_modules for i in privacy_engines.keys()}
+        private_params['Adversary on batch'] = adv_on_batch
         if len(privacy_modules) > 0:
             private_params["ε"] = privacy_args["EPSILON"]
             private_params["δ"] = privacy_args["DELTA"]
             private_params["MAX_GRAD_NORM"] = privacy_args["MAX_GRAD_NORM"]
         tags = [i for i in privacy_modules if i in privacy_engines.keys()]
+        tags.append('adv_on_batch='+str(adv_on_batch))
         if len(tags) > 0:
             tags.append("ε=" + str(privacy_args["EPSILON"]))
             tags.append("grad_norm=" + str(privacy_args["MAX_GRAD_NORM"]))
