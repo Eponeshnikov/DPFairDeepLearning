@@ -33,12 +33,12 @@ class Trainer:
         """
         self.model = model
         # optimizer for autoencoder nets
-        self.autoencoder_op = optim.SGD(self.model.autoencoder.parameters(), lr=0.001)
+        self.autoencoder_op = optim.Adam(self.model.autoencoder.parameters(), lr=0.001)
         # optimizer for classifier nets
-        self.classifier_op = optim.SGD(
+        self.classifier_op = optim.Adam(
             self.model.classifier.parameters(), lr=0.001)
         # optimizer for adversary nets
-        self.adversary_op = optim.SGD(self.model.adversary.parameters(), lr=0.001)
+        self.adversary_op = optim.Adam(self.model.adversary.parameters(), lr=0.001)
 
         self.train_data = data[0]
         self.test_data = data[1]
@@ -418,7 +418,7 @@ class Trainer:
             classifier_loss_log = classifier_loss_log / len(self.train_data)
             return total_loss_log, autoencoder_loss_log, adversary_loss_log, classifier_loss_log
 
-    def calc_fair_metrics(self):
+    def calc_fair_metrics(self, train=False):
         results = {}
         kfold = KFold(n_splits=5)
         clr = LogisticRegression(max_iter=1000)
@@ -428,8 +428,16 @@ class Trainer:
 
         X_transformed = self.model.transform(torch.from_numpy(X_test).to(device)).cpu().detach().numpy()
         acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_transformed, y_test, kfold, S_test)
-        results[self.name] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
+        results[self.name + ' test'] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
                               [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
+        if train:
+            X_train = self.train_data.dataset.X.cpu().detach().numpy()
+            y_train = self.train_data.dataset.y.cpu().detach().numpy()
+            S_train = self.train_data.dataset.A.cpu().detach().numpy()
+            X_transformed = self.model.transform(torch.from_numpy(X_train).to(device)).cpu().detach().numpy()
+            acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_transformed, y_train, kfold, S_train)
+            results[self.name + ' train'] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
+                                           [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
         # figs = plot_results(results, show=False)
         return results
 
@@ -441,10 +449,18 @@ class Trainer:
         X_test = self.test_data.dataset.X.cpu().detach().numpy()
         y_test = self.test_data.dataset.y.cpu().detach().numpy()
         S_test = self.test_data.dataset.A.cpu().detach().numpy()
+
+        X_train = self.train_data.dataset.X.cpu().detach().numpy()
+        y_train = self.train_data.dataset.y.cpu().detach().numpy()
+        S_train = self.train_data.dataset.A.cpu().detach().numpy()
+
         results_ = {}
         acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_test, y_test, kfold, S_test)
-        results_["Unfair"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
+        results_["Unfair test"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
                               [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
+        acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_train, y_train, kfold, S_train)
+        results_["Unfair train"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
+                                   [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
         for epoch in progressbar(range(1, num_epochs + 1)):  # loop over dataset
             grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
             self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], epoch)
@@ -463,19 +479,27 @@ class Trainer:
             self.logger.log_metric("Adversary Loss", "test loss", adversary_loss_test, epoch)
             self.logger.log_metric("Classifier Loss", "test loss", classifier_loss_test, epoch)
 
-            results = self.calc_fair_metrics()
+            results = self.calc_fair_metrics(train=True)
 
-            self.logger.log_metric("Accuracy", "Unfair", results_['Unfair'][0][0], epoch)
-            self.logger.log_metric("Accuracy", self.name, results[self.name][0][0], epoch)
+            self.logger.log_metric("Accuracy", "Unfair test", results_['Unfair test'][0][0], epoch)
+            self.logger.log_metric("Accuracy", "Unfair train", results_['Unfair train'][0][0], epoch)
+            self.logger.log_metric("Accuracy", self.name + ' test', results[self.name + ' test'][0][0], epoch)
+            self.logger.log_metric("Accuracy", self.name + ' train', results[self.name + ' train'][0][0], epoch)
 
-            self.logger.log_metric("ΔDP", "Unfair", results_['Unfair'][0][1], epoch)
-            self.logger.log_metric("ΔDP", self.name, results[self.name][0][1], epoch)
+            self.logger.log_metric("ΔDP", "Unfair test", results_['Unfair test'][0][1], epoch)
+            self.logger.log_metric("ΔDP", "Unfair train", results_['Unfair train'][0][1], epoch)
+            self.logger.log_metric("ΔDP", self.name + ' test', results[self.name + ' test'][0][1], epoch)
+            self.logger.log_metric("ΔDP", self.name + ' train', results[self.name + ' train'][0][1], epoch)
 
-            self.logger.log_metric("ΔEOD", "Unfair", results_['Unfair'][0][2], epoch)
-            self.logger.log_metric("ΔEOD", self.name, results[self.name][0][2], epoch)
+            self.logger.log_metric("ΔEOD", "Unfair test", results_['Unfair test'][0][2], epoch)
+            self.logger.log_metric("ΔEOD", "Unfair train", results_['Unfair train'][0][2], epoch)
+            self.logger.log_metric("ΔEOD", self.name + ' test', results[self.name + ' test'][0][2], epoch)
+            self.logger.log_metric("ΔEOD", self.name + ' train', results[self.name + ' train'][0][2], epoch)
 
-            self.logger.log_metric("ΔEOP", "Unfair", results_['Unfair'][0][3], epoch)
-            self.logger.log_metric("ΔEOP", self.name, results[self.name][0][3], epoch)
+            self.logger.log_metric("ΔEOP", "Unfair test", results_['Unfair test'][0][3], epoch)
+            self.logger.log_metric("ΔEOP", "Unfair train", results_['Unfair train'][0][3], epoch)
+            self.logger.log_metric("ΔEOP", self.name + ' test', results[self.name + ' test'][0][3], epoch)
+            self.logger.log_metric("ΔEOP", self.name + ' train', results[self.name + ' train'][0][3], epoch)
 
             self.logger.log_metric("ε", "autoencoder", privacy_engines['autoencoder'].get_epsilon(
                 privacy_args['DELTA']), epoch)

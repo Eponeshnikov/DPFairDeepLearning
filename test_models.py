@@ -6,7 +6,7 @@ comb_privacy = run_training.comb_privacy_eps
 comb_architecture = run_training.comb_arch
 
 n_threads = 0
-parallel_threads = 3
+parallel_threads = 1
 thread_list = []
 repeats = 1
 DATA_SET_NAME = 'Adult_1'

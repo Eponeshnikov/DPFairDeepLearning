@@ -50,9 +50,9 @@ X_train, X_test, y_train, y_test, S_train, S_test = convert2torch(X_train, X_tes
                                                                   S_test)
 
 n_feature = X_train.shape[1]
-latent_dims = [15*(10**i) for i in range(2)]  # latent dim space as in LAFTR
-adv_on_batchs = np.arange(10, 31, 10)
-hidden_layers_ = [{'class': 20*(10**i), 'avd': 20*(10**i), 'ae': 20*(10**i)} for i in range(2)]
+latent_dims = [15*(10**i) for i in range(1)]  # latent dim space as in LAFTR
+adv_on_batchs = [1]
+hidden_layers_ = [{'class': 20*(10**i), 'avd': 20*(10**i), 'ae': 20*(10**i)} for i in range(1)]
 
 comb_arch = []
 for latent_dim in latent_dims:
