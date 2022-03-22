@@ -108,7 +108,7 @@ if len(sys.argv) > 2:
     lfr = DemParModel(n_feature=n_feature, latent_dim=architecture[0], class_weight=1, recon_weight=0,
                       adv_weight=1, hidden_layers=architecture[2])
     trainer = Trainer(lfr, [train_data_loader, test_data_loader],
-                      DATA_SET_NAME, "LFR")
+                      DATA_SET_NAME, "DP")
 
     trainer.train_process(comb_privacy_eps[c_n][0], comb_privacy_eps[c_n][1], architecture[1], epoch)
     exit()
