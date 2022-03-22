@@ -22,7 +22,7 @@ device = torch.device(device_name)
 
 
 class Trainer:
-    def __init__(self, model, data, data_set_name, model_name):
+    def __init__(self, model, data, data_set_name, model_name, xavier_weights=False):
         """Trainer for adversarial fair representation
 
         Args:
@@ -52,18 +52,21 @@ class Trainer:
                   "Autoencoder neurons": self.model.hidden_layers['ae'],
                   "Adversary neurons": self.model.hidden_layers['avd'],
                   "Classifier neurons": self.model.hidden_layers['class'],
-                  "Latent dimension": self.model.latent_dim}
+                  "Latent dimension": self.model.latent_dim,
+                  "Xavier weights init:": str(xavier_weights)}
         tags = [f"batch_size={self.train_data.batch_size}",
                 f"neurons={self.model.hidden_layers['ae']}",
-                f"latent_dim={self.model.latent_dim}"]
+                f"latent_dim={self.model.latent_dim}",
+                f"xavier_weight={xavier_weights}"]
         self.logger.add_params(mainhp)
         self.logger.task.add_tags(tags)
         self.model.autoencoder.float()
         self.model.classifier.float()
         self.model.adversary.float()
-        self.model.autoencoder.apply(self.init_weights)
-        self.model.classifier.apply(self.init_weights)
-        self.model.adversary.apply(self.init_weights)
+        if xavier_weights:
+            self.model.autoencoder.apply(self.init_weights)
+            self.model.classifier.apply(self.init_weights)
+            self.model.adversary.apply(self.init_weights)
 
     # def save(self):
     #   self.logger.save_model(self.model.autoencoder, self.name)

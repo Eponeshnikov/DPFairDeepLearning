@@ -71,10 +71,10 @@ has_gpu = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # batch size
 batch_size = 1024
-epoch = 1000
+epoch = 200
 
 DELTA = 1 / X_train.shape[0]
-MAX_GRAD_NORMS = [200]
+MAX_GRAD_NORMS = [25]
 EPSILONS = [11.5, 3.2, 0.96, 0.72]
 
 privacy_args = []
@@ -86,7 +86,7 @@ for EPSILON in EPSILONS:
 parts_to_privacy = ['autoencoder', 'adversary', 'classifier']
 comb_privacy = []
 
-for n in range(0, 1):
+for n in range(1, 2):
     for i in itertools.combinations(parts_to_privacy, n):
         comb_privacy.append(i)
 
