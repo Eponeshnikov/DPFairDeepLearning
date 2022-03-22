@@ -58,7 +58,7 @@ class Trainer:
                 f"neurons={self.model.hidden_layers['ae']}",
                 f"latent_dim={self.model.latent_dim}",
                 f"xavier_weight={xavier_weights}",
-                f"model={model_name}"]
+                model_name]
         self.logger.add_params(mainhp)
         self.logger.task.add_tags(tags)
         self.model.autoencoder.float()
