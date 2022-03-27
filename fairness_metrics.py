@@ -1,4 +1,3 @@
-from sklearn.model_selection import cross_val_score, KFold
 import numpy as np
 from sklearn.metrics import accuracy_score
 

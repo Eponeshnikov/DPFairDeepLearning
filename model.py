@@ -1,11 +1,10 @@
 import torch
 from torch import nn
-import torch.nn.functional as F
 from abc import ABC, abstractmethod
-from utils import Logger
+import use_cuda
 
 
-use_cuda = True
+use_cuda = use_cuda.use_cuda
 device_name = "cuda" if torch.cuda.is_available() and use_cuda else "cpu"
 device = torch.device(device_name)
 fn_rec_criteria = nn.MSELoss()

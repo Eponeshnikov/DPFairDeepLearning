@@ -6,19 +6,27 @@ from progressbar import progressbar
 from model import EqualOddModel
 from opacus import PrivacyEngine
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score, KFold
-from helper import plot_results
-from opacus.utils.batch_memory_manager import BatchMemoryManager
+from sklearn.model_selection import KFold
+from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
+from opacus.accountants.utils import get_noise_multiplier
 from fairness_metrics import cross_val_fair_scores
 import numpy as np
 import warnings
-import time
+import use_cuda
 
 warnings.simplefilter("ignore")
 
-use_cuda = True
+use_cuda = use_cuda.use_cuda
 device_name = "cuda" if torch.cuda.is_available() and use_cuda else "cpu"
 device = torch.device(device_name)
+
+
+def polygon_under_graph(x, y):
+    """
+    Construct the vertex list which defines the polygon filling the space under
+    the (x, y) line graph. This assumes x is in ascending order.
+    """
+    return [(x[0], 0.), *zip(x, y), (x[-1], 0.)]
 
 
 class Trainer:
@@ -32,6 +40,9 @@ class Trainer:
             model_name (string): Model's name 
         """
         self.model = model
+        self.seed = 0
+        self.epoch_plt = {"autoencoder":0, "classifier":0, "adversary":0}
+        self.params_plt = {}
         # optimizer for autoencoder nets
         self.autoencoder_op = optim.Adam(self.model.autoencoder.parameters(), lr=0.001)
         # optimizer for classifier nets
@@ -77,7 +88,7 @@ class Trainer:
             torch.nn.init.xavier_uniform_(m.weight)
             m.bias.data.fill_(0.01)
 
-    def train_adversary_on_batch(self, batch_data, sensitive_a, label_y):
+    def train_adversary_on_batch(self, batch_data, sensitive_a, label_y, use_opacus=False):
         """ Train the adversary with fixed classifier-autoencoder """
         # reset gradient
         self.model.classifier.eval()
@@ -113,6 +124,11 @@ class Trainer:
         error.backward()
 
         # update weights with gradients
+        if not use_opacus and len(self.privacy_modules) > 0:
+            for component in self.privacy_modules:
+                if component == 'adversary':
+                    self.clip_grad(component)
+                    self.add_noise(component)
         self.adversary_op.step()
 
         return avd_error
@@ -231,7 +247,11 @@ class Trainer:
 
         # self.logger.save_model(self.model.autoencoder, self.name)
 
-    def make_private(self, privacy_modules, privacy_args, adv_on_batch, num_epochs):
+    def make_private(self, privacy_modules, privacy_args, adv_on_batch, num_epochs, use_opacus=False):
+        self.privacy_args = privacy_args
+        self.privacy_modules = privacy_modules
+        self.num_epochs = num_epochs
+        self.adv_on_batch = adv_on_batch
         privacy_engines = {"autoencoder": PrivacyEngine(),
                            "adversary": PrivacyEngine(),
                            "classifier": PrivacyEngine()}
@@ -248,40 +268,50 @@ class Trainer:
         tags.append('adv_on_batch=' + str(adv_on_batch))
         self.logger.add_params(private_params)
         self.logger.task.add_tags(tags)
-        for part in privacy_modules:
-            if part == 'autoencoder':
-                self.model.autoencoder, self.autoencoder_op, self.train_data = \
-                    privacy_engines[part].make_private_with_epsilon(
-                        module=self.model.autoencoder,
-                        optimizer=self.autoencoder_op,
-                        data_loader=self.train_data,
-                        epochs=num_epochs,
-                        target_epsilon=privacy_args['EPSILON'],
-                        target_delta=privacy_args['DELTA'],
-                        max_grad_norm=privacy_args['MAX_GRAD_NORM'],
-                    )
-            elif part == 'adversary':
-                self.model.adversary, self.adversary_op, self.train_data = \
-                    privacy_engines[part].make_private_with_epsilon(
-                        module=self.model.adversary,
-                        optimizer=self.adversary_op,
-                        data_loader=self.train_data,
-                        epochs=num_epochs*adv_on_batch,
-                        target_epsilon=privacy_args['EPSILON'],
-                        target_delta=privacy_args['DELTA'],
-                        max_grad_norm=privacy_args['MAX_GRAD_NORM'],
-                    )
-            elif part == 'classifier':
-                self.model.classifier, self.classifier_op, self.train_data = \
-                    privacy_engines[part].make_private_with_epsilon(
-                        module=self.model.classifier,
-                        optimizer=self.classifier_op,
-                        data_loader=self.train_data,
-                        epochs=num_epochs,
-                        target_epsilon=privacy_args['EPSILON'],
-                        target_delta=privacy_args['DELTA'],
-                        max_grad_norm=privacy_args['MAX_GRAD_NORM'],
-                    )
+        if use_opacus:
+            for part in privacy_modules:
+                if part == 'autoencoder':
+                    gen = torch.Generator(device=device_name)
+                    gen.manual_seed(self.seed)
+                    self.model.autoencoder, self.autoencoder_op, self.train_data = \
+                        privacy_engines[part].make_private_with_epsilon(
+                            module=self.model.autoencoder,
+                            optimizer=self.autoencoder_op,
+                            data_loader=self.train_data,
+                            epochs=num_epochs,
+                            target_epsilon=privacy_args['EPSILON'],
+                            target_delta=privacy_args['DELTA'],
+                            max_grad_norm=privacy_args['MAX_GRAD_NORM'],
+                            noise_generator=gen
+                        )
+                elif part == 'adversary':
+                    gen = torch.Generator(device=device_name)
+                    gen.manual_seed(self.seed+1)
+                    self.model.adversary, self.adversary_op, self.train_data = \
+                        privacy_engines[part].make_private_with_epsilon(
+                            module=self.model.adversary,
+                            optimizer=self.adversary_op,
+                            data_loader=self.train_data,
+                            epochs=num_epochs * adv_on_batch,
+                            target_epsilon=privacy_args['EPSILON'],
+                            target_delta=privacy_args['DELTA'],
+                            max_grad_norm=privacy_args['MAX_GRAD_NORM'],
+                            noise_generator=gen
+                        )
+                elif part == 'classifier':
+                    gen = torch.Generator(device=device_name)
+                    gen.manual_seed(self.seed+2)
+                    self.model.classifier, self.classifier_op, self.train_data = \
+                        privacy_engines[part].make_private_with_epsilon(
+                            module=self.model.classifier,
+                            optimizer=self.classifier_op,
+                            data_loader=self.train_data,
+                            epochs=num_epochs,
+                            target_epsilon=privacy_args['EPSILON'],
+                            target_delta=privacy_args['DELTA'],
+                            max_grad_norm=privacy_args['MAX_GRAD_NORM'],
+                            noise_generator=gen
+                        )
         return privacy_engines
 
     def get_grad_norm(self, model_):
@@ -293,14 +323,79 @@ class Trainer:
         elif model_ == 'adversary':
             model = self.model.adversary
         total_norm = 0
-        parameters = [p for p in model.parameters() if p.grad is not None and p.requires_grad]
+        parameters = [(pn, p) for pn, p in model.named_parameters() if p.grad is not None and p.requires_grad]
         for p in parameters:
-            param_norm = p.grad.detach().data.norm(2)
+            param_norm = p[1].grad.detach().data.norm(2)
+            self.logger.log_metric(model_ + " norms", p[0], param_norm, self.epoch_plt[model_])
             total_norm += param_norm.item() ** 2
         total_norm = total_norm ** 0.5
+        self.epoch_plt[model_] += 1
         return total_norm
 
-    def train(self, adv_on_batch):
+    def clip_grad(self, component):
+        S = self.privacy_args["MAX_GRAD_NORM"]
+        if component == 'autoencoder':
+            torch.nn.utils.clip_grad_norm_(self.model.autoencoder.parameters(), max_norm=S)
+        elif component == 'classifier':
+            torch.nn.utils.clip_grad_norm_(self.model.classifier.parameters(), max_norm=S)
+        elif component == 'adversary':
+            torch.nn.utils.clip_grad_norm_(self.model.adversary.parameters(), max_norm=S)
+
+    def get_noise(self, component):
+        epochs = self.num_epochs * self.adv_on_batch if component == 'adversary' else self.num_epochs
+        ds_size = self.train_data.dataset.X.cpu().detach().numpy().shape[0]
+        batch_size = self.train_data.batch_size
+        noise_multiplier = get_noise_multiplier(
+            target_epsilon=self.privacy_args["EPSILON"],
+            target_delta=self.privacy_args["DELTA"],
+            sample_rate=batch_size / ds_size,
+            epochs=epochs
+        )
+        return noise_multiplier
+
+    def add_noise(self, component):
+        sigma = self.privacy_args["MAX_GRAD_NORM"] * self.get_noise(component)
+        if component == 'autoencoder':
+            saved_var = dict()
+            for tensor_name, tensor in self.model.autoencoder.named_parameters():
+                saved_var[tensor_name] = torch.zeros_like(tensor)
+            for tensor_name, tensor in self.model.autoencoder.named_parameters():
+                new_grad = tensor.grad
+                saved_var[tensor_name].add_(new_grad)
+                noise = torch.FloatTensor(tensor.grad.shape).normal_(0, sigma).to(device)
+                saved_var[tensor_name].add_(noise)
+                tensor.grad = saved_var[tensor_name]
+        elif component == 'classifier':
+            saved_var = dict()
+            for tensor_name, tensor in self.model.classifier.named_parameters():
+                saved_var[tensor_name] = torch.zeros_like(tensor)
+            for tensor_name, tensor in self.model.classifier.named_parameters():
+                new_grad = tensor.grad
+                saved_var[tensor_name].add_(new_grad)
+                noise = torch.FloatTensor(tensor.grad.shape).normal_(0, sigma).to(device)
+                saved_var[tensor_name].add_(noise)
+                tensor.grad = saved_var[tensor_name]
+        elif component == 'adversary':
+            saved_var = dict()
+            for tensor_name, tensor in self.model.adversary.named_parameters():
+                saved_var[tensor_name] = torch.zeros_like(tensor)
+            for tensor_name, tensor in self.model.adversary.named_parameters():
+                new_grad = tensor.grad
+                saved_var[tensor_name].add_(new_grad)
+                noise = torch.FloatTensor(tensor.grad.shape).normal_(0, sigma).to(device)
+                saved_var[tensor_name].add_(noise)
+                tensor.grad = saved_var[tensor_name]
+
+    def get_eps(self, component, epoch):
+        noise_multiplier = self.get_noise(component)
+        ds_size = self.train_data.dataset.X.cpu().detach().numpy().shape[0]
+        batch_size = self.train_data.batch_size
+        delta = self.privacy_args["DELTA"]
+        eps = compute_dp_sgd_privacy.compute_dp_sgd_privacy(n=ds_size, batch_size=batch_size,
+                                                      noise_multiplier=noise_multiplier, epochs=epoch, delta=delta)[0]
+        return eps
+
+    def train(self, adv_on_batch, use_opacus=False):
         """Train with fixed adversary or classifier-encoder-decoder across epoch
         """
 
@@ -348,6 +443,11 @@ class Trainer:
             total_loss.backward()
 
             # update parameter of the classifier and the autoencoder
+            if not use_opacus and len(self.privacy_modules) > 0:
+                for component in self.privacy_modules:
+                    if component != 'adversary':
+                        self.clip_grad(component)
+                        self.add_noise(component)
             self.classifier_op.step()
             self.autoencoder_op.step()
 
@@ -355,7 +455,7 @@ class Trainer:
             # train the adversary
             for t in range(adv_on_batch):
                 # print("update adversary iter=", t)
-                adversary_loss += self.train_adversary_on_batch(train_data, sensitive_a, label_y)
+                adversary_loss += self.train_adversary_on_batch(train_data, sensitive_a, label_y, use_opacus=use_opacus)
 
             adversary_loss = adversary_loss / adv_on_batch
 
@@ -386,8 +486,8 @@ class Trainer:
 
                 if torch.cuda.is_available() and use_cuda:
                     test_data = test_data.to(device)
-                    label_y = label_y.cuda()
-                    sensitive_a = sensitive_a.cuda()
+                    label_y = label_y.to(device)
+                    sensitive_a = sensitive_a.to(device)
 
                 # compute reconstruction and latent space
                 reconstructed, z = self.model.autoencoder(test_data)
@@ -433,7 +533,7 @@ class Trainer:
         X_transformed = self.model.transform(torch.from_numpy(X_test).to(device)).cpu().detach().numpy()
         acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_transformed, y_test, kfold, S_test)
         results[self.name + ' test'] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
-                              [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
+                                        [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
         if train:
             X_train = self.train_data.dataset.X.cpu().detach().numpy()
             y_train = self.train_data.dataset.y.cpu().detach().numpy()
@@ -441,13 +541,13 @@ class Trainer:
             X_transformed = self.model.transform(torch.from_numpy(X_train).to(device)).cpu().detach().numpy()
             acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_transformed, y_train, kfold, S_train)
             results[self.name + ' train'] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
-                                           [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
+                                             [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
         # figs = plot_results(results, show=False)
         return results
 
-    def train_process(self, privacy_parts, privacy_args, adv_on_batch,  num_epochs=1000):
+    def train_process(self, privacy_parts, privacy_args, adv_on_batch, num_epochs=1000, use_opacus=False):
 
-        privacy_engines = self.make_private(privacy_parts, privacy_args, adv_on_batch, num_epochs)
+        privacy_engines = self.make_private(privacy_parts, privacy_args, adv_on_batch, num_epochs, use_opacus=use_opacus)
         kfold = KFold(n_splits=5)
         clr = LogisticRegression(max_iter=1000)
         X_test = self.test_data.dataset.X.cpu().detach().numpy()
@@ -461,10 +561,10 @@ class Trainer:
         results_ = {}
         acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_test, y_test, kfold, S_test)
         results_["Unfair test"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
-                              [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
+                                   [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
         acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_train, y_train, kfold, S_train)
         results_["Unfair train"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
-                                   [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
+                                    [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
         for epoch in progressbar(range(1, num_epochs + 1)):  # loop over dataset
             grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
             self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], epoch)
@@ -472,7 +572,7 @@ class Trainer:
             self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], epoch)
             # train
             total_loss_train, autoencoder_loss_train, \
-            adversary_loss_train, classifier_loss_train = self.train(adv_on_batch)
+            adversary_loss_train, classifier_loss_train = self.train(adv_on_batch, use_opacus=use_opacus)
             self.logger.log_metric("Autoencoder Loss", "train loss", autoencoder_loss_train, epoch)
             self.logger.log_metric("Adversary Loss", "train loss", adversary_loss_train, epoch)
             self.logger.log_metric("Classifier Loss", "train loss", classifier_loss_train, epoch)
@@ -505,12 +605,17 @@ class Trainer:
             self.logger.log_metric("ΔEOP", self.name + ' test', results[self.name + ' test'][0][3], epoch)
             self.logger.log_metric("ΔEOP", self.name + ' train', results[self.name + ' train'][0][3], epoch)
 
-            self.logger.log_metric("ε", "autoencoder", privacy_engines['autoencoder'].get_epsilon(
-                privacy_args['DELTA']), epoch)
-            self.logger.log_metric("ε", "adversary", privacy_engines['adversary'].get_epsilon(
-                privacy_args['DELTA']), epoch)
-            self.logger.log_metric("ε", "classifier", privacy_engines['classifier'].get_epsilon(
-                privacy_args['DELTA']), epoch)
+            if use_opacus:
+                self.logger.log_metric("ε", "autoencoder", privacy_engines['autoencoder'].get_epsilon(
+                    privacy_args['DELTA']), epoch)
+                self.logger.log_metric("ε", "adversary", privacy_engines['adversary'].get_epsilon(
+                    privacy_args['DELTA']), epoch)
+                self.logger.log_metric("ε", "classifier", privacy_engines['classifier'].get_epsilon(
+                    privacy_args['DELTA']), epoch)
+            else:
+                self.logger.log_metric("ε", "autoencoder", self.get_eps("autoencoder", epoch), epoch)
+                self.logger.log_metric("ε", "adversary", self.get_eps("adversary", epoch), epoch)
+                self.logger.log_metric("ε", "classifier", self.get_eps("classifier", epoch), epoch)
 
         if torch.cuda.is_available() and use_cuda:
             torch.cuda.empty_cache()
