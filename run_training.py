@@ -1,151 +1,123 @@
-import sys
-import torch
-import pandas as pd
-import use_cuda
-from torch.utils.data import DataLoader
-from utils import train_test_split, DatasetLoader, convert2torch
-from data_processing import preprocessing_german, preprocessing_adult_1, preprocessing_adult_2
-import itertools
-
+import argparse
+from dataset import Dataset
 from model import DemParModel
 from trainer import Trainer
+from utils import gen_namedtuples
 
-if len(sys.argv) > 2:
-    c_n = int(sys.argv[2])
-else:
-    c_n = None
 
-if len(sys.argv) > 4:
-    seed = int(sys.argv[4])
-else:
-    seed = 0
+def get_parser():
+    parser = argparse.ArgumentParser(description="Benchmarking Differentially Private Fair Deep Learning")
+    parser.add_argument("--dataset", default="Adult",
+                        help="Dataset for training (default: Adult)")
+    parser.add_argument("--data_dir", default="dataset",
+                        help="Directory for dataset (default: dataset)")
+    parser.add_argument("--sensattr", type=str, default="sex",
+                        help="Sensitive attribute (default: sex)")
+    parser.add_argument("--age", type=int, default=65,
+                        help="Age value if sensattr is age (default: 65)")
+    parser.add_argument("--batch", type=int, default=1024,
+                        help="Batch size (default: 1024)")
 
-if len(sys.argv) > 2:
-    DATA_SET_NAME = sys.argv[1]
-else:
-    DATA_SET_NAME = 'Adult_1'
-if DATA_SET_NAME == 'German':
-    train_data = pd.read_csv("./dataset/german.data.csv")
-    X, y, S, data = preprocessing_german(train_data)
-    X_train, X_test, y_train, y_test, S_train, S_test = train_test_split(X, y, S, test_size=0.3)
+    parser.add_argument("--n_features", type=int,
+                        help="Number of features in input")
+    parser.add_argument("--n_classes", type=int,
+                        help="Number of classes")
+    parser.add_argument("--edepth", type=int, default=2,
+                        help="Encoder MLP depth as in depth*[width] (default: 2)")
+    parser.add_argument("--ewidths", type=int, default=32,
+                        help="Encoder MLP width (default: 32)")
+    parser.add_argument("--cdepth", type=int, default=2,
+                        help="Classifier MLP depth as in depth*[width] (default: 2)")
+    parser.add_argument("--cwidths", type=int, default=32,
+                        help="Classifier MLP width (default: 32)")
+    parser.add_argument("--adepth", type=int, default=2,
+                        help="Adversary MLP depth as in depth*[width] (default: 2)")
+    parser.add_argument("--awidths", type=int, default=32,
+                        help="Adversary MLP width (default: 32)")
+    parser.add_argument("--zdim", type=int, default=16,
+                        help="All MLPs has this as input or output (default: 16)")
+    parser.add_argument("--classweight", type=float, default=1.,
+                        help="Weight of classification in total loss (default: 1)")
+    parser.add_argument("--advweight", type=float, default=1.,
+                        help="Weight of adversary in total loss (default: 1)")
+    parser.add_argument("--aeweight", type=float, default=0.,
+                        help="Weight of autoencoder in total loss (default: 0)")
+    parser.add_argument("--activ_ae", type=str, default="leakyrelu",
+                        help="Activation function in hiddens in autoencoder (default: leakyrelu)")
+    parser.add_argument("--activ_adv", type=str, default="leakyrelu",
+                        help="Activation function in hiddens in adversary (default: leakyrelu)")
+    parser.add_argument("--activ_class", type=str, default="leakyrelu",
+                        help="Activation function in hiddens in classifier (default: leakyrelu)")
+    parser.add_argument("--e_activ_ae", type=str, default="sigmoid",
+                        help="Activation function in the end of autoencoder (default: sigmoid)")
+    parser.add_argument("--e_activ_adv", type=str, default="sigmoid",
+                        help="Activation function in the end of adversary (default: sigmoid)")
+    parser.add_argument("--e_activ_class", type=str, default="sigmoid",
+                        help="Activation function in the end of classifier (default: sigmoid)")
+    parser.add_argument("--no_cuda", default=False, action="store_true",
+                        help="Don't use cuda (default: False)")
+    parser.add_argument("--xavier", default=False, action="store_false",
+                        help="Use Xavier initialisation (default: False)")
+    parser.add_argument("--grad_clip_ae", type=float, default=1.,
+                        help="Gradient norm clipping without privacy in autoencoder, use 0 for disabling (default: 1)")
+    parser.add_argument("--grad_clip_adv", type=float, default=1.,
+                        help="Gradient norm clipping without privacy in adversary, use 0 for disabling (default: 1)")
+    parser.add_argument("--grad_clip_class", type=float, default=1.,
+                        help="Gradient norm clipping without privacy in classifier, use 0 for disabling (default: 1)")
 
-elif DATA_SET_NAME == 'Adult_1':
-    train_data = pd.read_csv("./dataset/adult.data.csv")
-    test_data = pd.read_csv("./dataset/adult.test.csv")
-    X_train, y_train, S_train, data = preprocessing_adult_1(train_data)
-    X_test, y_test, S_test, data_ = preprocessing_adult_1(test_data)
+    parser.add_argument("--delta", type=float,
+                        help="The target δ of the (ϵ,δ)-differential privacy guarantee")
+    parser.add_argument("--eps", type=float, default=10.,
+                        help="The target ϵ of the (ϵ,δ)-differential privacy guarantee (default: 10)")
+    parser.add_argument("--max_grad_norm", type=float, default=1.,
+                        help="The maximum L2 norm of per-sample gradients (default: 1)")
+    parser.add_argument("--privacy_in", action="append",
+                        help="Inject privacy in [name]")
 
-elif DATA_SET_NAME == 'Adult_1_s':
-    train_data = pd.read_csv("./dataset/adult.data.csv")
-    X, y, S, data = preprocessing_adult_1(train_data)
-    X_train, X_test, y_train, y_test, S_train, S_test = train_test_split(X, y, S, test_size=0.3)
+    parser.add_argument("--seed", type=int, default=0,
+                        help="Random seed (default: 0)")
+    parser.add_argument("--adv_on_batch", type=int, default=1,
+                        help="Iterations of training adversary (default: 1)")
+    parser.add_argument("--eval_step_fair", type=int, default=3,
+                        help="Evaluate fairness each [eval_step_fair] epoch (default: 3)")
+    parser.add_argument("--epoch", type=int, default=80,
+                        help="Number of epochs (default: 80)")
 
-elif DATA_SET_NAME == 'Adult_2':
-    data = preprocessing_adult_2("income", "sex")
-    S_train = data["attr_train"]
-    S_test = data["attr_test"]
-    X_train = data["x_train"]
-    X_test = data["x_test"]
-    y_train = data["y_train"]
-    y_test = data["y_test"]
-else:
-    raise Exception("Only German, Adult_1, Adult_2, Adult_1_s are available")
+    return parser
 
-X_train, X_test, y_train, y_test, S_train, S_test = convert2torch(X_train, X_test, y_train, y_test, S_train,
-                                                                  S_test)
-# ======================== Parameters ========================
-# ------------------Architecture parameters-------------------
-n_feature = X_train.shape[1]  # change in specific cases
 
-latent_dim_base = 15
-min_latent_coef = 0
-max_latent_coef = 1
+def main():
+    parser = get_parser()
+    args = parser.parse_args()
+    name_and_args_dict = {"laftr_model_args":
+                              ['edepth', 'ewidths', 'adepth', 'awidths', 'cdepth',
+                               'cwidths', 'zdim', 'activ_ae', 'activ_adv', 'activ_class',
+                               'e_activ_ae', 'e_activ_adv', 'e_activ_class',
+                               'classweight', 'xavier', 'aeweight', 'advweight',
+                               'n_features', 'n_classes', 'no_cuda'],
+                          "dataset_args":
+                              ['dataset', 'data_dir', 'batch', 'age', 'sensattr'],
+                          "privacy_args":
+                              ['privacy_in', 'delta', 'eps', 'max_grad_norm'],
+                          "trainer_args":
+                              ['epoch', 'seed', 'dataset', 'adv_on_batch', 'eval_step_fair',
+                               'grad_clip_ae', 'grad_clip_adv', 'grad_clip_class']
+                          }
 
-neurons_in_layer_base = 20
-min_neuron_coef = 0
-max_neuron_coef = 1
-# ------------------------------------------------------------
-# Calculated automatically, change in specific cases
-latent_dims = [latent_dim_base * (10 ** i) for i in range(min_latent_coef, max_latent_coef)]  # latent dim space
-hidden_layers_ = [{'class': neurons_in_layer_base * (10 ** i),
-                   'avd': neurons_in_layer_base * (10 ** i),
-                   'ae': neurons_in_layer_base * (10 ** i)} for i in range(min_neuron_coef, max_neuron_coef)]
+    laftr_model_args, dataset_args, privacy_args, trainer_args = \
+        gen_namedtuples(args.__dict__, name_and_args_dict)
+    d = Dataset(dataset_args)
+    train_dataloader, test_dataloader = d.get_dataloader()
 
-# --------------------Learning parameters---------------------
-adv_on_batchs = [1]
-batch_size = 10240
-epoch = 200
-use_cuda = use_cuda.use_cuda  # see use_cuda.py
-xavier_weights = False
-# ------------------------------------------------------------
-# Calculated automatically, change in specific cases
-device_name = "cuda" if torch.cuda.is_available() and use_cuda else "cpu"
-device = torch.device(device_name)
+    laftr_model_args.n_features = d.n_features()
+    laftr_model_args.n_classes = d.n_classes()
+    privacy_args.delta = 1 / d.dataset_size()
 
-# ---------------------Privacy parameters---------------------
-DELTA = 1 / X_train.shape[0]  # change in specific cases
-MAX_GRAD_NORMS = [1]
-EPSILONS = [0.72, 0.96, 3.2, 11.5]
+    laftr_model = DemParModel(laftr_model_args)
 
-parts_to_privacy = ['classifier']
-max_num_of_private_components = 1
-min_num_of_private_components = 1  # 0 - learning without privacy
+    trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
+    trainer.train_process()
 
-# ------------------------------------------------------------
-# ============================================================
 
-# create dataset loader
-train_data = DatasetLoader(X_train, y_train, S_train)
-test_data = DatasetLoader(X_test, y_test, S_test)
-
-# Generate combinations of architecture
-comb_arch = []
-for latent_dim in latent_dims:
-    for adv_on_batch in adv_on_batchs:
-        for hidden_layers in hidden_layers_:
-            comb_arch.append([latent_dim, adv_on_batch, hidden_layers])
-
-# Define one specific architecture
-if len(sys.argv) > 3:
-    architecture = comb_arch[int(sys.argv[3])]
-else:
-    architecture = comb_arch[0]
-
-# Generate privacy parameters combinations
-privacy_args = []
-for EPSILON in EPSILONS:
-    for MAX_GRAD_NORM in MAX_GRAD_NORMS:
-        args = {"MAX_GRAD_NORM": MAX_GRAD_NORM, "EPSILON": EPSILON, "DELTA": DELTA}
-        privacy_args.append(args)
-
-# Generate combinations of private components
-comb_privacy = []
-for n in range(min_num_of_private_components, max_num_of_private_components + 1):
-    for i in itertools.combinations(parts_to_privacy, n):
-        comb_privacy.append(i)
-
-# Generate combinations of private components with different privacy parameters combinations
-comb_privacy_eps = []
-no_privacy = True
-for c in comb_privacy:
-    for arg in privacy_args:
-        if len(c) > 0:
-            comb_privacy_eps.append([c, arg])
-        else:
-            if no_privacy:
-                comb_privacy_eps.append([c, arg])
-                no_privacy = False
-
-# Run one specific training (c_n index in list with all possible combinations)
-if len(sys.argv) > 2:
-    train_data_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    test_data_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
-
-    lfr = DemParModel(n_feature=n_feature, latent_dim=architecture[0], class_weight=1, recon_weight=0,
-                      adv_weight=1, hidden_layers=architecture[2])
-    trainer = Trainer(lfr, [train_data_loader, test_data_loader],
-                      DATA_SET_NAME, "DP", xavier_weights=xavier_weights)
-    trainer.seed = seed
-
-    trainer.train_process(comb_privacy_eps[c_n][0], comb_privacy_eps[c_n][1], architecture[1], epoch)
-    exit()
+if __name__ == "__main__":
+    main()

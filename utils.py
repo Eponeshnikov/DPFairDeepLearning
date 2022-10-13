@@ -1,19 +1,16 @@
 import time
-import numpy as np
 import torch
+from collections import namedtuple
+from dataclasses import make_dataclass
 from clearml import Task, Logger
-
-'''
-    TensorBoard Data will be stored in './runs' path
-'''
 
 
 class CMLogger:
     def __init__(self, model_name, dataset_name):
         self.task = Task.init(project_name='AI Fairness',
-                              task_name=model_name + '_' + dataset_name + str(time.time()))
+                              task_name=f'{model_name}_{dataset_name}_{time.time()}')
 
-        self.user_prop_dict = {"Model name": model_name, "Dataset": dataset_name}
+        self.user_prop_dict = {"arch": model_name, "dataset": dataset_name}
         self.task.set_parameters_as_dict(self.user_prop_dict)
         self.params_dictionary = {}
         self.task.connect(self.params_dictionary)
@@ -41,20 +38,14 @@ def convert2torch(*arrs):
     return result
 
 
-class DatasetLoader(torch.utils.data.Dataset):
-    """ Create traning data iterator """
+def gen_namedtuple(args_dict, args_, name):
+    named_tuple = make_dataclass(name, args_)
+    specific_args_dict = {k: args_dict[k] for k in args_}
+    return named_tuple(*specific_args_dict.values())
 
-    def __init__(self, feature_X, label_y, sentive_a):
-        self.X = feature_X.float()
-        self.y = label_y.float()
-        self.A = sentive_a.float()
-        if type(self.A) == np.ndarray:
-            self.A = torch.from_numpy(self.A).float()
 
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-        return self.X[idx, :], self.y[idx], self.A[idx]
+def gen_namedtuples(args_dict, name_and_args_dict):
+    result = []
+    for k in name_and_args_dict:
+        result.append(gen_namedtuple(args_dict, name_and_args_dict[k], k))
+    return result
