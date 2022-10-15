@@ -69,14 +69,16 @@ class Dataset:
                                            f'{self.args.data_dir}/adult.data')
                 print('Downloaded')
             else:
-                print('adult.data already exist')
+                if self.args.only_download_data:
+                    print('adult.data already downloaded')
             if not os.path.isfile(f'{self.args.data_dir}/adult.test'):
                 print('Downloading adult.test ...')
                 urllib.request.urlretrieve('https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test',
                                            f'{self.args.data_dir}/adult.test')
                 print('Downloaded')
             else:
-                print('adult.test already exist')
+                if self.args.only_download_data:
+                    print('adult.test already downloaded')
 
     def get_dataset(self, return_=True):
         if any([self.X_train is None, self.X_test is None, self.y_train is None,

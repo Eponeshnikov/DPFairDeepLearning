@@ -38,14 +38,31 @@ def convert2torch(*arrs):
     return result
 
 
-def gen_namedtuple(args_dict, args_, name):
-    named_tuple = make_dataclass(name, args_)
+def gen_dataclass(args_dict, args_, name):
+    dataclass_ = make_dataclass(name, args_)
     specific_args_dict = {k: args_dict[k] for k in args_}
-    return named_tuple(*specific_args_dict.values())
+    return dataclass_(*specific_args_dict.values())
 
 
-def gen_namedtuples(args_dict, name_and_args_dict):
+def gen_dataclasses(args_dict, name_and_args_dict):
     result = []
     for k in name_and_args_dict:
-        result.append(gen_namedtuple(args_dict, name_and_args_dict[k], k))
+        result.append(gen_dataclass(args_dict, name_and_args_dict[k], k))
     return result
+
+
+def gen_exec_str(param_list, param_names_, seed_, no_cuda_, python3=False):
+    exec_str = 'python3 ' if python3 else 'python '
+    exec_str += 'run_training.py'
+    for p, n in zip(param_list, param_names_):
+        if n == 'xavier' and p:
+            exec_str += f' --{n}'
+        elif n == 'privacy_in':
+            for i in p:
+                exec_str += f' --{n} {i}'
+        else:
+            exec_str += f' --{n} {p}'
+    exec_str += f' --seed {seed_}'
+    if no_cuda_:
+        exec_str += f' --no_cuda'
+    return exec_str

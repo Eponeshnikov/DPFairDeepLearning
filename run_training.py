@@ -2,7 +2,7 @@ import argparse
 from dataset import Dataset
 from model import DemParModel
 from trainer import Trainer
-from utils import gen_namedtuples
+from utils import gen_dataclasses
 
 
 def get_parser():
@@ -17,6 +17,8 @@ def get_parser():
                         help="Age value if sensattr is age (default: 65)")
     parser.add_argument("--batch", type=int, default=1024,
                         help="Batch size (default: 1024)")
+    parser.add_argument("--only_download_data", default=False, action="store_true",
+                        help="Use just for download dataset (default: False)")
 
     parser.add_argument("--n_features", type=int,
                         help="Number of features in input")
@@ -56,7 +58,7 @@ def get_parser():
                         help="Activation function in the end of classifier (default: sigmoid)")
     parser.add_argument("--no_cuda", default=False, action="store_true",
                         help="Don't use cuda (default: False)")
-    parser.add_argument("--xavier", default=False, action="store_false",
+    parser.add_argument("--xavier", default=False, action="store_true",
                         help="Use Xavier initialisation (default: False)")
     parser.add_argument("--grad_clip_ae", type=float, default=1.,
                         help="Gradient norm clipping without privacy in autoencoder, use 0 for disabling (default: 1)")
@@ -96,7 +98,7 @@ def main():
                                'classweight', 'xavier', 'aeweight', 'advweight',
                                'n_features', 'n_classes', 'no_cuda'],
                           "dataset_args":
-                              ['dataset', 'data_dir', 'batch', 'age', 'sensattr'],
+                              ['dataset', 'data_dir', 'batch', 'age', 'sensattr', 'only_download_data'],
                           "privacy_args":
                               ['privacy_in', 'delta', 'eps', 'max_grad_norm'],
                           "trainer_args":
@@ -105,18 +107,20 @@ def main():
                           }
 
     laftr_model_args, dataset_args, privacy_args, trainer_args = \
-        gen_namedtuples(args.__dict__, name_and_args_dict)
+        gen_dataclasses(args.__dict__, name_and_args_dict)
     d = Dataset(dataset_args)
-    train_dataloader, test_dataloader = d.get_dataloader()
+    if not dataset_args.only_download_data:
+        train_dataloader, test_dataloader = d.get_dataloader()
+        laftr_model_args.n_features = d.n_features()
+        laftr_model_args.n_classes = d.n_classes()
+        privacy_args.delta = 1 / d.dataset_size()
 
-    laftr_model_args.n_features = d.n_features()
-    laftr_model_args.n_classes = d.n_classes()
-    privacy_args.delta = 1 / d.dataset_size()
+        laftr_model = DemParModel(laftr_model_args)
 
-    laftr_model = DemParModel(laftr_model_args)
-
-    trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
-    trainer.train_process()
+        trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
+        trainer.train_process()
+    else:
+        d.download_data()
 
 
 if __name__ == "__main__":

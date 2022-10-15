@@ -9,7 +9,6 @@ from sklearn.model_selection import KFold
 from fairness_metrics import cross_val_fair_scores
 import numpy as np
 import warnings
-import use_cuda
 
 warnings.simplefilter("ignore")
 
@@ -401,5 +400,5 @@ class Trainer:
             self.logger.log_metric("ε", "classifier", privacy_engines['classifier'].get_epsilon(
                 self.privacy_args.delta), epoch)
 
-        if torch.cuda.is_available() and use_cuda:
+        if self.device_name == 'cuda':
             torch.cuda.empty_cache()
