@@ -7,12 +7,13 @@ from dataclasses import make_dataclass
 from threading import Thread
 
 # ====== Running parameters ======
-parallel_threads = 2
+parallel_threads = 4
 repeats = 5
-random_seed = False
+random_seed = True
 no_cuda = False
 # ================================
 # ======= Model parameters =======
+arch = ['DP', 'EOD']
 edepth = [2]
 ewidths = [32]
 adepth = [2]
@@ -35,8 +36,8 @@ xavier = [True]
 data_dir = 'dataset'
 dataset = ['Adult']
 batch = [10240]
-sensattr = ['sex']
-age = [65]
+sensattr = ['sex', 'age']
+ages = [(25, 44), (32, 36), (71, 75), (38, 70), (0, 30)]
 # ================================
 # ====== Privacy parameters ======
 privacy_in = [['autoencoder'], ['classifier'], ['adversary']]
@@ -44,7 +45,7 @@ eps = [0.72, 0.96, 3.2, 11.5]
 max_grad_norm = [1]
 # ================================
 # ====== Training parameters =====
-epoch = [80]
+epoch = [50]
 adv_on_batch = [1]
 eval_step_fair = [5]
 grad_clip_ae = [1]
@@ -54,16 +55,21 @@ grad_clip_class = [1]
 
 all_exp = list(
     itertools.product(
-        edepth, ewidths, adepth, awidths, cdepth, cwidths, zdim, activ_ae, activ_adv, activ_class, e_activ_ae,
-        e_activ_adv, e_activ_class, classweight, aeweight, advweight, xavier, dataset, batch, sensattr, age, privacy_in,
+        arch, edepth, ewidths, adepth, awidths, cdepth, cwidths, zdim, activ_ae, activ_adv, activ_class, e_activ_ae,
+        e_activ_adv, e_activ_class, classweight, aeweight, advweight, xavier, dataset, batch, sensattr, ages,
+        privacy_in,
         eps, max_grad_norm, epoch, adv_on_batch, eval_step_fair, grad_clip_ae, grad_clip_adv, grad_clip_class
     )
 )
 
-param_names = ['edepth', 'ewidths', 'adepth', 'awidths', 'cdepth', 'cwidths', 'zdim', 'activ_ae', 'activ_adv',
-               'activ_class', 'e_activ_ae', 'e_activ_adv', 'e_activ_class', 'classweight', 'aeweight', 'advweight',
-               'xavier', 'dataset', 'batch', 'sensattr', 'age', 'privacy_in', 'eps', 'max_grad_norm', 'epoch',
-               'adv_on_batch', 'eval_step_fair', 'grad_clip_ae', 'grad_clip_adv', 'grad_clip_class']
+all_exp = [i for i in all_exp if 'sex' not in i] + [i for i in all_exp if 'sex' in i and ages[0] in i]
+
+param_names = [
+    'arch', 'edepth', 'ewidths', 'adepth', 'awidths', 'cdepth', 'cwidths', 'zdim', 'activ_ae', 'activ_adv',
+    'activ_class', 'e_activ_ae', 'e_activ_adv', 'e_activ_class', 'classweight', 'aeweight', 'advweight', 'xavier',
+    'dataset', 'batch', 'sensattr', 'ages', 'privacy_in', 'eps', 'max_grad_norm', 'epoch', 'adv_on_batch',
+    'eval_step_fair', 'grad_clip_ae', 'grad_clip_adv', 'grad_clip_class'
+]
 
 if random_seed:
     seeds = np.random.randint(999999999, size=repeats * len(all_exp))
@@ -87,11 +93,11 @@ for i, (p_l, seed) in enumerate(zip(all_exp * repeats, seeds)):
     thread_list.append(Thread(target=os.system, args=(gen_exec_str(p_l, param_names, seed, no_cuda),)))
     if n_threads % parallel_threads == 0 or i == len(all_exp * repeats) - 1:
         for j, thread in enumerate(thread_list):
-            print(f'thread starts ({i-(len(thread_list)-j)+1})')
+            print(f'thread starts ({i - (len(thread_list) - j) + 1})')
             thread.start()
         for j, thread in enumerate(thread_list):
             thread.join()
-            print(f'thread ends ({i-(len(thread_list)-j)+1})')
+            print(f'thread ends ({i - (len(thread_list) - j) + 1})')
         print('=' * 40)
         thread_list = []
         n_threads = 0

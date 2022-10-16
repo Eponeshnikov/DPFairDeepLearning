@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 
-def preprocessing_adult(path, use_age=False, age_val=0, test_size=0.3):
+def preprocessing_adult(path, use_age=False, age_val=(10, 65), test_size=0.3, seed=0):
     def normalize(df_):
         df_.fnlwgt = (df_.fnlwgt - np.mean(df_.fnlwgt)) / np.std(df_.fnlwgt)
 
@@ -22,7 +22,7 @@ def preprocessing_adult(path, use_age=False, age_val=0, test_size=0.3):
 
     def x_y_s(df_):
         if use_age:
-            S = df_["age"].values > age_val
+            S = (df_["age"].values < age_val[1]) & (df_["age"].values > age_val[0])
         else:
             S = df_['gender_Male'].values
 
@@ -80,7 +80,8 @@ def preprocessing_adult(path, use_age=False, age_val=0, test_size=0.3):
     # feature scaling
     # apply stander scaler
 
-    df_train, df_test = df.head(int((1-test_size)*n_data)), df.tail(int(test_size*n_data))
+    #df_train, df_test = df.head(int((1 - test_size) * n_data)), df.tail(int(test_size * n_data))
+    df_train, df_test = train_test_split(df, test_size=test_size, random_state=seed)
     del df
     df_train = normalize(df_train)
     df_test = normalize(df_test)

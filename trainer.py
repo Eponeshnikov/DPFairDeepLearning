@@ -38,12 +38,12 @@ class Trainer:
         self.epoch_plt = {"autoencoder": 0, "classifier": 0, "adversary": 0}
         self.params_plt = {}
         # optimizer for autoencoder nets
-        self.autoencoder_op = optim.Adam(self.model.autoencoder.parameters(), lr=0.0002)
+        self.autoencoder_op = optim.Adam(self.model.autoencoder.parameters(), lr=0.001)
         # optimizer for classifier nets
         self.classifier_op = optim.Adam(
-            self.model.classifier.parameters(), lr=0.0002)
+            self.model.classifier.parameters(), lr=0.001)
         # optimizer for adversary nets
-        self.adversary_op = optim.Adam(self.model.adversary.parameters(), lr=0.0001)
+        self.adversary_op = optim.Adam(self.model.adversary.parameters(), lr=0.001)
 
         self.train_data = data[0]
         self.test_data = data[1]
@@ -51,8 +51,17 @@ class Trainer:
 
         self.logger = CMLogger(self.name, trainer_args.dataset)
         self.logger.task.add_tags(trainer_args.dataset)
-        tags = [self.name]
+        tags = [self.name, trainer_args.sensattr]
         self.logger.task.add_tags(tags)
+
+        X_test = self.test_data.dataset.X.cpu().detach().numpy()
+        S_test = self.test_data.dataset.A.cpu().detach().numpy()
+        X_train = self.train_data.dataset.X.cpu().detach().numpy()
+        S_train = self.train_data.dataset.A.cpu().detach().numpy()
+
+        dataset_params = {'Train size': len(X_train), 'Test size': len(X_test), 'Sensattr ones train': sum(S_train),
+                          'Sensattr ones test': sum(S_test)}
+        self.logger.add_params(dataset_params)
 
     def train_adversary_on_batch(self, batch_data, sensitive_a, label_y):
         """ Train the adversary with fixed classifier-autoencoder """
@@ -98,6 +107,8 @@ class Trainer:
                            "adversary": PrivacyEngine(),
                            "classifier": PrivacyEngine()}
         private_params = {}
+        if self.privacy_args.privacy_in is None:
+            self.privacy_args.privacy_in = []
         if len(self.privacy_args.privacy_in) > 0:
             private_params["eps"] = self.privacy_args.eps
             private_params["delta"] = self.privacy_args.delta

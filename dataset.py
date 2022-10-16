@@ -51,7 +51,8 @@ class Dataset:
             else:
                 raise Exception('Only age and sex are supported')
             X_train, y_train, S_train, X_test, y_test, S_test = \
-                preprocessing_adult(self.args.data_dir, use_age=use_age, age_val=self.args.age)
+                preprocessing_adult(self.args.data_dir, use_age=use_age,
+                                    age_val=(self.args.age_low, self.args.age_high), seed=self.args.seed)
         else:
             raise Exception("Only Adult is available")
         X_train, X_test, y_train, y_test, S_train, S_test = convert2torch(X_train, X_test, y_train, y_test, S_train,
@@ -110,3 +111,8 @@ class Dataset:
         if self.y_train is None:
             self.dataset_preprocess()
         return len(np.unique(self.y_train))
+
+    def n_groups(self):
+        if self.S_train is None:
+            self.dataset_preprocess()
+        return len(np.unique(self.S_train))

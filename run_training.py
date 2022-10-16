@@ -1,6 +1,6 @@
 import argparse
 from dataset import Dataset
-from model import DemParModel
+from model import DemParModel, EqualOddModel, EqualOppModel
 from trainer import Trainer
 from utils import gen_dataclasses
 
@@ -13,17 +13,23 @@ def get_parser():
                         help="Directory for dataset (default: dataset)")
     parser.add_argument("--sensattr", type=str, default="sex",
                         help="Sensitive attribute (default: sex)")
-    parser.add_argument("--age", type=int, default=65,
-                        help="Age value if sensattr is age (default: 65)")
+    parser.add_argument("--age_low", type=int, default=10,
+                        help="Low bound of age value if sensattr is age (default: 10)")
+    parser.add_argument("--age_high", type=int, default=65,
+                        help="High bound of age value if sensattr is age (default: 65)")
     parser.add_argument("--batch", type=int, default=1024,
                         help="Batch size (default: 1024)")
     parser.add_argument("--only_download_data", default=False, action="store_true",
                         help="Use just for download dataset (default: False)")
 
+    parser.add_argument("--arch", type=str, default="DP",
+                        help="Architecture of model")
     parser.add_argument("--n_features", type=int,
                         help="Number of features in input")
     parser.add_argument("--n_classes", type=int,
                         help="Number of classes")
+    parser.add_argument("--n_groups", type=int,
+                        help="Number of groups")
     parser.add_argument("--edepth", type=int, default=2,
                         help="Encoder MLP depth as in depth*[width] (default: 2)")
     parser.add_argument("--ewidths", type=int, default=32,
@@ -92,18 +98,18 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
     name_and_args_dict = {"laftr_model_args":
-                              ['edepth', 'ewidths', 'adepth', 'awidths', 'cdepth',
-                               'cwidths', 'zdim', 'activ_ae', 'activ_adv', 'activ_class',
-                               'e_activ_ae', 'e_activ_adv', 'e_activ_class',
-                               'classweight', 'xavier', 'aeweight', 'advweight',
-                               'n_features', 'n_classes', 'no_cuda'],
+                              ['arch', 'edepth', 'ewidths', 'adepth', 'awidths', 'cdepth', 'cwidths', 'zdim',
+                               'activ_ae', 'activ_adv', 'activ_class', 'e_activ_ae', 'e_activ_adv', 'e_activ_class',
+                               'classweight', 'aeweight', 'advweight', 'n_features', 'n_classes', 'n_groups', 'xavier',
+                               'no_cuda'],
                           "dataset_args":
-                              ['dataset', 'data_dir', 'batch', 'age', 'sensattr', 'only_download_data'],
+                              ['dataset', 'data_dir', 'batch', 'age_low', 'age_high', 'sensattr', 'only_download_data',
+                               'seed'],
                           "privacy_args":
                               ['privacy_in', 'delta', 'eps', 'max_grad_norm'],
                           "trainer_args":
-                              ['epoch', 'seed', 'dataset', 'adv_on_batch', 'eval_step_fair',
-                               'grad_clip_ae', 'grad_clip_adv', 'grad_clip_class']
+                              ['epoch', 'seed', 'dataset', 'adv_on_batch', 'eval_step_fair', 'grad_clip_ae',
+                               'grad_clip_adv', 'grad_clip_class', 'sensattr']
                           }
 
     laftr_model_args, dataset_args, privacy_args, trainer_args = \
@@ -113,9 +119,16 @@ def main():
         train_dataloader, test_dataloader = d.get_dataloader()
         laftr_model_args.n_features = d.n_features()
         laftr_model_args.n_classes = d.n_classes()
+        laftr_model_args.n_groups = d.n_groups()
         privacy_args.delta = 1 / d.dataset_size()
+        if laftr_model_args.arch == 'DP':
+            model_arch = DemParModel
+        elif laftr_model_args.arch == 'EOD':
+            model_arch = EqualOddModel
+        else:
+            raise Exception('Only DP and EOD available')
 
-        laftr_model = DemParModel(laftr_model_args)
+        laftr_model = model_arch(laftr_model_args)
 
         trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
         trainer.train_process()

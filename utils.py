@@ -60,6 +60,9 @@ def gen_exec_str(param_list, param_names_, seed_, no_cuda_, python3=False):
         elif n == 'privacy_in':
             for i in p:
                 exec_str += f' --{n} {i}'
+        elif n == 'ages':
+            exec_str += f' --age_low {p[0]}'
+            exec_str += f' --age_high {p[1]}'
         else:
             exec_str += f' --{n} {p}'
     exec_str += f' --seed {seed_}'

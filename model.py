@@ -22,7 +22,7 @@ class AbstractModel(ABC):
 
         self.autoencoder = AutoEncoder(args)
         self.class_neurons = [args.zdim] + args.cdepth * [args.cwidths] + [args.n_classes - 1]
-        self.adv_neurons = [args.zdim] + args.adepth * [args.awidths] + [args.n_classes - 1]
+        self.adv_neurons = [args.zdim] + args.adepth * [args.awidths] + [args.n_groups - 1]
 
         self.adversary = MLP(self.adv_neurons, activ=args.activ_adv,
                              end_activ=args.e_activ_adv, xavier=args.xavier)
@@ -81,7 +81,7 @@ class EqualOddModel(DemParModel):
 
     def __init__(self, args):
         DemParModel.__init__(self, args)
-        self.adv_neurons = [args.zdim + args.n_classes - 1] + args.adepth * [args.awidths] + [args.n_classes - 1]
+        self.adv_neurons = [args.zdim + args.n_classes - 1] + args.adepth * [args.awidths] + [args.n_groups - 1]
 
         self.adversary = MLP(self.adv_neurons)  # for equalized odds and equal opportunity
 
@@ -172,13 +172,3 @@ class MLP(nn.Module):
         """Activates gradient computation through MLP parameters"""
         for para in self.parameters():
             para.requires_grad = True
-
-
-def cross_entropy(y_pred, y):
-    """
-    Calculate the mean cross entropy.
-        y: expected class labels.
-        y_pred: predicted class scores.
-    Return: the cross entropy loss. 
-    """
-    return -torch.mean(torch.mul(y_pred, torch.log(y)) + torch.mul((1 - y_pred), torch.log(1 - y)))
