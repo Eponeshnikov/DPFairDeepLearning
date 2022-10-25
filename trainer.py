@@ -38,12 +38,12 @@ class Trainer:
         self.epoch_plt = {"autoencoder": 0, "classifier": 0, "adversary": 0}
         self.params_plt = {}
         # optimizer for autoencoder nets
-        self.autoencoder_op = optim.Adam(self.model.autoencoder.parameters(), lr=0.001)
+        self.autoencoder_op = optim.RMSprop(self.model.autoencoder.parameters(), lr=0.008)
         # optimizer for classifier nets
-        self.classifier_op = optim.Adam(
-            self.model.classifier.parameters(), lr=0.001)
+        self.classifier_op = optim.RMSprop(
+            self.model.classifier.parameters(), lr=0.008)
         # optimizer for adversary nets
-        self.adversary_op = optim.Adam(self.model.adversary.parameters(), lr=0.001)
+        self.adversary_op = optim.RMSprop(self.model.adversary.parameters(), lr=0.008)
 
         self.train_data = data[0]
         self.test_data = data[1]
@@ -175,7 +175,7 @@ class Trainer:
         parameters = [(pn, p) for pn, p in model.named_parameters() if p.grad is not None and p.requires_grad]
         for p in parameters:
             param_norm = p[1].grad.detach().data.norm(2)
-            self.logger.log_metric(model_ + " norms", p[0], param_norm, self.epoch_plt[model_])
+            # self.logger.log_metric(model_ + " norms", p[0], param_norm, self.epoch_plt[model_])
             total_norm += param_norm.item() ** 2
         total_norm = total_norm ** 0.5
         self.epoch_plt[model_] += 1

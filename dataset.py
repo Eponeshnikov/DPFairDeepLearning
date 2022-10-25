@@ -52,7 +52,7 @@ class Dataset:
                 raise Exception('Only age and sex are supported')
             X_train, y_train, S_train, X_test, y_test, S_test = \
                 preprocessing_adult(self.args.data_dir, use_age=use_age,
-                                    age_val=(self.args.age_low, self.args.age_high), seed=self.args.seed)
+                                    age_val=(self.args.age_low, self.args.age_high))
         else:
             raise Exception("Only Adult is available")
         X_train, X_test, y_train, y_test, S_train, S_test = convert2torch(X_train, X_test, y_train, y_test, S_train,

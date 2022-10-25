@@ -5,9 +5,10 @@ from dataset import Dataset
 from utils import gen_exec_str
 from dataclasses import make_dataclass
 from threading import Thread
+import time
 
 # ====== Running parameters ======
-parallel_threads = 4
+parallel_threads = 2
 repeats = 5
 random_seed = True
 no_cuda = False
@@ -24,7 +25,7 @@ zdim = [16]
 activ_ae = ['leakyrelu']
 activ_adv = ['leakyrelu']
 activ_class = ['leakyrelu']
-e_activ_ae = ['sigmoid']
+e_activ_ae = ['leakyrelu']
 e_activ_adv = ['sigmoid']
 e_activ_class = ['sigmoid']
 classweight = [1]
@@ -35,19 +36,19 @@ xavier = [True]
 # ====== Dataset parameters ======
 data_dir = 'dataset'
 dataset = ['Adult']
-batch = [10240]
-sensattr = ['sex', 'age']
-ages = [(25, 44), (32, 36), (71, 75), (38, 70), (0, 30)]
+batch = [1024]
+sensattr = ['sex']
+ages = [(71, 75)]
 # ================================
 # ====== Privacy parameters ======
 privacy_in = [['autoencoder'], ['classifier'], ['adversary']]
-eps = [0.72, 0.96, 3.2, 11.5]
+eps = [1, 3, 10, 30]
 max_grad_norm = [1]
 # ================================
 # ====== Training parameters =====
-epoch = [50]
+epoch = [100]
 adv_on_batch = [1]
-eval_step_fair = [5]
+eval_step_fair = [10]
 grad_clip_ae = [1]
 grad_clip_adv = [1]
 grad_clip_class = [1]
@@ -76,7 +77,7 @@ if random_seed:
 else:
     seeds = np.arange(0, repeats * len(all_exp))
 
-print(f'Total number of experiments: {len(all_exp * repeats)}')
+print(f'Total number of experiments: {len((all_exp * repeats))}')
 
 # ======= Download datasets ======
 for ds in dataset:
@@ -88,7 +89,8 @@ for ds in dataset:
 
 thread_list = []
 n_threads = 0
-for i, (p_l, seed) in enumerate(zip(all_exp * repeats, seeds)):
+start_time = time.time()
+for i, (p_l, seed) in enumerate(zip((all_exp * repeats), seeds)):
     n_threads += 1
     thread_list.append(Thread(target=os.system, args=(gen_exec_str(p_l, param_names, seed, no_cuda),)))
     if n_threads % parallel_threads == 0 or i == len(all_exp * repeats) - 1:
@@ -101,3 +103,5 @@ for i, (p_l, seed) in enumerate(zip(all_exp * repeats, seeds)):
         print('=' * 40)
         thread_list = []
         n_threads = 0
+
+print(f'Total time for job {round((time.time() - start_time) / 60, 2)} min')
