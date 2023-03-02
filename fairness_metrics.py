@@ -1,14 +1,15 @@
 import numpy as np
 from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
 
 
 def statistical_parity_score(y_pred, s):
     """ This measure the proportion of positive and negative class in protected and non protected group """
 
     alpha_1 = np.sum(np.logical_and(y_pred == 1, s == 1)) / \
-        float(np.sum(s == 1))
+              float(np.sum(s == 1))
     beta_1 = np.sum(np.logical_and(y_pred == 1, s == 0)) / \
-        float(np.sum(s == 0))
+             float(np.sum(s == 0))
     return np.abs(alpha_1 - beta_1)
 
 
@@ -85,40 +86,32 @@ def cross_val_fair_score(model, X, y, cv, protected_attrib, scoring='statistical
     return np.array(scores)
 
 
-def cross_val_fair_scores(model, X, y, cv, protected_attrib, fit_sensitive=False):
+def fair_scores(y, protected_attrib):
     """
-    model : class with fit and predict methods
     X: features matrices
     y: labels
-    cv: Kfold cross validation from Sklearn
-    protected_attrib: Protected attribute
     scoring : "statistical_parity_score" | "equalized_odds" | "equal_opportunity"
-    fit_sensitive: True if the fit method receive sensitive attribute. Only for fairness-aware estimators
     """
-    st_scores = []
-    equal_odds = []
-    equal_opps = []
-    accuracy = []
-    for train_index, test_index in cv.split(X):
-        # print("TRAIN:", train_index, "TEST:", test_index)
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        s_train, s_test = protected_attrib[train_index], protected_attrib[test_index]
-        if fit_sensitive:
-            clf = model.fit(X_train, y_train, sensitive_features=s_train)
-            y_pred = clf.predict(X_test, sensitive_features=s_test)
-        else:
-            clf = model.fit(X_train, y_train)
-            y_pred = clf.predict(X_test)
+    # print("TRAIN:", train_index, "TEST:", test_index)
+    y_train = y[0]
+    y_test = y[1]
+    y_pred_train = y[2]
+    y_pred_test = y[3]
+    s_train = protected_attrib[0]
+    s_test = protected_attrib[1]
 
-        st_score = statistical_parity_score(y_pred, s_test)
-        st_scores.append(st_score)
+    st_score_train = statistical_parity_score(y_pred_train, s_train)
+    st_score_test = statistical_parity_score(y_pred_test, s_test)
 
-        tpr, fpr = confusion_matrix_score(y_pred, y_test, s_test)
-        equal_odds.append(tpr + fpr)
+    tpr_train, fpr_train = confusion_matrix_score(y_pred_train, y_train, s_train)
+    tpr_test, fpr_test = confusion_matrix_score(y_pred_test, y_test, s_test)
+    equal_odds_train = tpr_train + fpr_train
+    equal_odds_test = tpr_test + fpr_test
 
-        tpr, _ = confusion_matrix_score(y_pred, y_test, s_test)
-        equal_opps.append(tpr)
+    equal_opps_train = tpr_train
+    equal_opps_test = tpr_test
 
-        accuracy.append(accuracy_score(y_test, y_pred))
-    return accuracy, st_scores, equal_odds, equal_opps
+    accuracy_train = accuracy_score(y_train, y_pred_train)
+    accuracy_test = accuracy_score(y_test, y_pred_test)
+    return (accuracy_train, accuracy_test), (st_score_train, st_score_test), \
+        (equal_odds_train, equal_odds_test), (equal_opps_train, equal_opps_test)

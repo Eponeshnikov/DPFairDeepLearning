@@ -19,9 +19,6 @@ class CMLogger:
     def log_metric(self, graph_name, metric_name, value, step):
         self.logger.report_scalar(graph_name, metric_name, value, step)
 
-    def log_plt(self, title, series, epoch, fig):
-        self.logger.report_matplotlib_figure(title, series, iteration=epoch, figure=fig)
-
     def add_params(self, params):
         self.task.set_parameters_as_dict(params)
 

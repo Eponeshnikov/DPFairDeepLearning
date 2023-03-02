@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import numpy as np
 from itertools import chain
 from abc import ABC, abstractmethod
 
@@ -59,6 +60,18 @@ class DemParModel(AbstractModel):
         AbstractModel.__init__(self, args)
         self.name = "Dem_Par"
 
+    def l1_loss(self, y, y_logits):
+        """Returns l1 loss"""
+        y_hat = torch.sigmoid(y_logits)
+        return torch.squeeze(torch.abs(y - y_hat))
+
+    def ce_loss(self, y, y_logits, eps=1e-8):
+        """Returns cross entropy loss"""
+        y_hat = torch.sigmoid(y_logits)
+        return -torch.sum(
+            y * torch.log(y_hat + eps) + (1 - y) * torch.log(1 - y_hat + eps)
+        )
+
     def get_adv_loss(self, a_pred, a):
         return fn_bce_criteria(a_pred, a)
 
@@ -69,7 +82,7 @@ class DemParModel(AbstractModel):
         return fn_bce_criteria(y_pred, y)
 
     def get_loss(self, recon_loss, class_loss, adv_loss, Y=None):
-        loss = self.aeweight * recon_loss + self.classweight * class_loss + self.advweight * adv_loss
+        loss = self.aeweight * recon_loss + self.classweight * class_loss - self.advweight * adv_loss
         return loss
 
     def transform(self, data):

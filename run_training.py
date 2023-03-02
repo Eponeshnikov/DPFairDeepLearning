@@ -62,16 +62,6 @@ def get_parser():
                         help="Activation function in the end of adversary (default: sigmoid)")
     parser.add_argument("--e_activ_class", type=str, default="sigmoid",
                         help="Activation function in the end of classifier (default: sigmoid)")
-    parser.add_argument("--no_cuda", default=False, action="store_true",
-                        help="Don't use cuda (default: False)")
-    parser.add_argument("--xavier", default=False, action="store_true",
-                        help="Use Xavier initialisation (default: False)")
-    parser.add_argument("--grad_clip_ae", type=float, default=1.,
-                        help="Gradient norm clipping without privacy in autoencoder, use 0 for disabling (default: 1)")
-    parser.add_argument("--grad_clip_adv", type=float, default=1.,
-                        help="Gradient norm clipping without privacy in adversary, use 0 for disabling (default: 1)")
-    parser.add_argument("--grad_clip_class", type=float, default=1.,
-                        help="Gradient norm clipping without privacy in classifier, use 0 for disabling (default: 1)")
 
     parser.add_argument("--delta", type=float,
                         help="The target δ of the (ϵ,δ)-differential privacy guarantee")
@@ -90,6 +80,28 @@ def get_parser():
                         help="Evaluate fairness each [eval_step_fair] epoch (default: 3)")
     parser.add_argument("--epoch", type=int, default=80,
                         help="Number of epochs (default: 80)")
+    parser.add_argument("--no_cuda", default=False, action="store_true",
+                        help="Don't use cuda (default: False)")
+    parser.add_argument("--xavier", default=False, action="store_true",
+                        help="Use Xavier initialisation (default: False)")
+    parser.add_argument("--grad_clip_ae", type=float, default=1.,
+                        help="Gradient norm clipping without privacy in autoencoder, use 0 for disabling (default: 1)")
+    parser.add_argument("--grad_clip_adv", type=float, default=1.,
+                        help="Gradient norm clipping without privacy in adversary, use 0 for disabling (default: 1)")
+    parser.add_argument("--grad_clip_class", type=float, default=1.,
+                        help="Gradient norm clipping without privacy in classifier, use 0 for disabling (default: 1)")
+    parser.add_argument("--optimizer_ae", type=str, default='RMSprop',
+                        help="Optimizer for autoencoder (default: RMSprop)")
+    parser.add_argument("--optimizer_adv", type=str, default='RMSprop',
+                        help="Optimizer for adversary (default: RMSprop)")
+    parser.add_argument("--optimizer_class", type=str, default='RMSprop',
+                        help="Optimizer for classifier (default: RMSprop)")
+    parser.add_argument("--lr_ae", type=float, default=0.008,
+                        help="Learning rate for autoencoder (default: 0.008)")
+    parser.add_argument("--lr_adv", type=float, default=0.008,
+                        help="Learning rate for adversary (default: 0.008)")
+    parser.add_argument("--lr_class", type=float, default=0.008,
+                        help="Learning rate for classifier (default: 0.008)")
 
     return parser
 
@@ -109,7 +121,8 @@ def main():
                               ['privacy_in', 'delta', 'eps', 'max_grad_norm'],
                           "trainer_args":
                               ['epoch', 'seed', 'dataset', 'adv_on_batch', 'eval_step_fair', 'grad_clip_ae',
-                               'grad_clip_adv', 'grad_clip_class', 'sensattr']
+                               'grad_clip_adv', 'grad_clip_class', 'sensattr',
+                               'optimizer_ae', 'optimizer_adv', 'optimizer_class', 'lr_ae', 'lr_adv', 'lr_class']
                           }
 
     laftr_model_args, dataset_args, privacy_args, trainer_args = \

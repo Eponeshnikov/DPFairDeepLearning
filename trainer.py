@@ -6,24 +6,28 @@ from model import EqualOddModel
 from opacus import PrivacyEngine
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import KFold
-from fairness_metrics import cross_val_fair_scores
+from fairness_metrics import fair_scores
 import numpy as np
 import warnings
 
 warnings.simplefilter("ignore")
 
 
-def polygon_under_graph(x, y):
-    """
-    Construct the vertex list which defines the polygon filling the space under
-    the (x, y) line graph. This assumes x is in ascending order.
-    """
-    return [(x[0], 0.), *zip(x, y), (x[-1], 0.)]
+def str2optimizer(stropt):
+    if stropt == 'RMSprop':
+        optimizer = optim.RMSprop
+    elif stropt == 'Adam':
+        optimizer = optim.NAdam
+    else:
+        optimizer = None
+        raise Exception('Only RMSprop and Adam supported')
+    return optimizer
 
 
 class Trainer:
     def __init__(self, model, data, trainer_args, privacy_args):
         """Trainer for adversarial fair representation"""
+        torch.backends.cudnn.benchmark = True
         self.device_name = model.device_name
         self.device = torch.device(self.device_name)
 
@@ -38,15 +42,18 @@ class Trainer:
         self.epoch_plt = {"autoencoder": 0, "classifier": 0, "adversary": 0}
         self.params_plt = {}
         # optimizer for autoencoder nets
-        self.autoencoder_op = optim.RMSprop(self.model.autoencoder.parameters(), lr=0.008)
+        self.autoencoder_op = str2optimizer(trainer_args.optimizer_ae)(
+            list(self.model.autoencoder.encoder.parameters()) + list(self.model.classifier.parameters()), lr=trainer_args.lr_ae)
         # optimizer for classifier nets
-        self.classifier_op = optim.RMSprop(
-            self.model.classifier.parameters(), lr=0.008)
+        #self.classifier_op = str2optimizer(trainer_args.optimizer_class)(
+        #    self.model.classifier.parameters(), lr=trainer_args.lr_class)
         # optimizer for adversary nets
-        self.adversary_op = optim.RMSprop(self.model.adversary.parameters(), lr=0.008)
+        self.adversary_op = str2optimizer(trainer_args.optimizer_adv)(
+            self.model.adversary.parameters(), lr=trainer_args.lr_adv)
 
         self.train_data = data[0]
         self.test_data = data[1]
+
         self.name = model.name
 
         self.logger = CMLogger(self.name, trainer_args.dataset)
@@ -66,10 +73,11 @@ class Trainer:
     def train_adversary_on_batch(self, batch_data, sensitive_a, label_y):
         """ Train the adversary with fixed classifier-autoencoder """
         # reset gradient
-        self.model.classifier.eval()
-        self.model.autoencoder.eval()
+        self.model.classifier.train()
+        self.model.autoencoder.train()
         self.model.adversary.train()
         self.adversary_op.zero_grad()
+        self.step += 1
 
         with torch.no_grad():
             reconst, z = self.model.autoencoder(batch_data)
@@ -91,16 +99,20 @@ class Trainer:
         # predict sensitive attribut from latent dimension
         pred_a = self.model.adversary(adv_input)
         # Compute the adversary loss error
-        avd_error = self.model.get_adv_loss(pred_a, sentive_feature)
+        adv_error = self.model.get_adv_loss(pred_a, sentive_feature)
 
         # Compute the overall loss and take a negative gradient for the adversary
-        error = -self.model.get_loss(rec_error, cl_error, avd_error, label_y)
+        error = adv_error#-self.model.get_loss(rec_error, cl_error, adv_error, label_y)
         error.backward()
+        grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
+        self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], self.step)
+        self.logger.log_metric("Gradient norms", "Classifier", grad_norms[1], self.step)
+        self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], self.step)
         if self.clip_grad['adv'] > 0 and 'adversary' not in self.privacy_args.privacy_in:
             torch.nn.utils.clip_grad_norm(self.model.adversary.parameters(), self.clip_grad['adv'])
         self.adversary_op.step()
 
-        return avd_error
+        return adv_error
 
     def make_private(self):
         privacy_engines = {"autoencoder": PrivacyEngine(),
@@ -166,7 +178,7 @@ class Trainer:
     def get_grad_norm(self, model_):
         model = None
         if model_ == 'autoencoder':
-            model = self.model.autoencoder
+            model = self.model.autoencoder.encoder
         elif model_ == 'classifier':
             model = self.model.classifier
         elif model_ == 'adversary':
@@ -184,23 +196,23 @@ class Trainer:
     def train(self):
         """Train with fixed adversary or classifier-encoder-decoder across epoch
         """
-
         adversary_loss_log = 0
         total_loss_log = 0
         classifier_loss_log = 0
         autoencoder_loss_log = 0
         torch.autograd.set_detect_anomaly(True)
         for n_batch, (train_x, label_y, sensitive_a) in enumerate(self.train_data):
+            self.step += 1
             train_data = train_x.to(self.device)
             label_y = label_y.to(self.device)
             sensitive_a = sensitive_a.to(self.device)
             self.model.classifier.train()
             self.model.autoencoder.train()
-            self.model.adversary.eval()
+            self.model.adversary.train()
 
             # reset the gradients back to zero
             self.autoencoder_op.zero_grad()
-            self.classifier_op.zero_grad()
+            #self.classifier_op.zero_grad()
 
             # compute reconstruction and latent space  the
             reconstructed, z = self.model.autoencoder(train_data)
@@ -226,13 +238,16 @@ class Trainer:
 
             # backpropagate the gradient encoder-decoder-classifier with fixed adversary
             total_loss.backward()
-
+            grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
+            self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], self.step)
+            self.logger.log_metric("Gradient norms", "Classifier", grad_norms[1], self.step)
+            self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], self.step)
             # update parameter of the classifier and the autoencoder
             if self.clip_grad['ae'] > 0 and 'autoencoder' not in self.privacy_args.privacy_in:
-                torch.nn.utils.clip_grad_norm(self.model.autoencoder.parameters(), self.clip_grad['ae'])
+                torch.nn.utils.clip_grad_norm(self.model.autoencoder.encoder.parameters(), self.clip_grad['ae'])
             if self.clip_grad['class'] > 0 and 'classifier' not in self.privacy_args.privacy_in:
                 torch.nn.utils.clip_grad_norm(self.model.classifier.parameters(), self.clip_grad['class'])
-            self.classifier_op.step()
+            #self.classifier_op.step()
             self.autoencoder_op.step()
 
             adversary_loss = 0
@@ -301,33 +316,40 @@ class Trainer:
             classifier_loss_log = classifier_loss_log / len(self.train_data)
             return total_loss_log, autoencoder_loss_log, adversary_loss_log, classifier_loss_log
 
-    def calc_fair_metrics(self, train=False):
+    def calc_fair_metrics(self):
         results = {}
-        kfold = KFold(n_splits=5)
         clr = LogisticRegression(max_iter=1000)
         X_test = self.test_data.dataset.X.cpu().detach().numpy()
         y_test = self.test_data.dataset.y.cpu().detach().numpy()
         S_test = self.test_data.dataset.A.cpu().detach().numpy()
+        X_train = self.train_data.dataset.X.cpu().detach().numpy()
+        y_train = self.train_data.dataset.y.cpu().detach().numpy()
+        S_train = self.train_data.dataset.A.cpu().detach().numpy()
+        X_transformed_train = self.model.transform(torch.from_numpy(X_train).to(self.device)).cpu().detach().numpy()
+        X_transformed_test = self.model.transform(torch.from_numpy(X_test).to(self.device)).cpu().detach().numpy()
 
-        X_transformed = self.model.transform(torch.from_numpy(X_test).to(self.device)).cpu().detach().numpy()
-        acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_transformed, y_test, kfold, S_test)
-        results[self.name + ' test'] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
-                                        [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
-        if train:
-            X_train = self.train_data.dataset.X.cpu().detach().numpy()
-            y_train = self.train_data.dataset.y.cpu().detach().numpy()
-            S_train = self.train_data.dataset.A.cpu().detach().numpy()
-            X_transformed = self.model.transform(torch.from_numpy(X_train).to(self.device)).cpu().detach().numpy()
-            acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_transformed, y_train, kfold, S_train)
-            results[self.name + ' train'] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
-                                             [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
-        # figs = plot_results(results, show=False)
+        clr.fit(X_transformed_train, y_train)
+        y_pred_test = clr.predict(X_transformed_test)
+        y_pred_train = clr.predict(X_transformed_train)
+        y_pred_train_nn = torch.round(self.model.classifier(
+            self.model.transform(
+                torch.from_numpy(X_train).to(self.device)))).cpu().detach().numpy()
+        y_pred_test_nn = torch.round(self.model.classifier(
+            self.model.transform(
+                torch.from_numpy(X_test).to(self.device)))).cpu().detach().numpy()
+        acc_, dp_, eqodd_, eopp_ = fair_scores([y_train, y_test, y_pred_train, y_pred_test], [S_train, S_test])
+        acc__, dp__, eqodd__, eopp__ = fair_scores([y_train, y_test, y_pred_train_nn, y_pred_test_nn],
+                                                   [S_train, S_test])
+
+        results[self.name + ' test'] = (acc_[1], dp_[1], eqodd_[1], eopp_[1],
+                                        acc__[1], dp__[1], eqodd__[1], eopp__[1])
+        results[self.name + ' train'] = (acc_[0], dp_[0], eqodd_[0], eopp_[0],
+                                         acc__[0], dp__[0], eqodd__[0], eopp__[0])
         return results
 
     def train_process(self):
-
+        self.step = 0
         privacy_engines = self.make_private()
-        kfold = KFold(n_splits=5)
         clr = LogisticRegression(max_iter=1000)
         X_test = self.test_data.dataset.X.cpu().detach().numpy()
         y_test = self.test_data.dataset.y.cpu().detach().numpy()
@@ -338,78 +360,100 @@ class Trainer:
         S_train = self.train_data.dataset.A.cpu().detach().numpy()
 
         results_ = {}
-        acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_test, y_test, kfold, S_test)
-        results_["Unfair test"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
-                                   [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
-        acc_, dp_, eqodd_, eopp_ = cross_val_fair_scores(clr, X_train, y_train, kfold, S_train)
-        results_["Unfair train"] = ([np.mean(acc_), np.mean(dp_), np.mean(eqodd_), np.mean(eopp_)],
-                                    [np.std(acc_), np.std(dp_), np.std(eqodd_), np.std(eopp_)])
+        clr.fit(X_train, y_train)
+        y_pred_test = clr.predict(X_test)
+        y_pred_train = clr.predict(X_train)
+        acc_, dp_, eqodd_, eopp_ = fair_scores([y_train, y_test, y_pred_train, y_pred_test], [S_train, S_test])
+        results_["Unfair test"] = (acc_[1], dp_[1], eqodd_[1], eopp_[1])
+        results_["Unfair train"] = (acc_[0], dp_[0], eqodd_[0], eopp_[0])
         for epoch in progressbar(range(1, self.epoch + 1)):  # loop over dataset
-            grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
-            self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], epoch)
-            self.logger.log_metric("Gradient norms", "Classifier", grad_norms[1], epoch)
-            self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], epoch)
+            #grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
+            #self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], epoch)
+            #self.logger.log_metric("Gradient norms", "Classifier", grad_norms[1], epoch)
+            #self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], epoch)
             # train
             total_loss_train, autoencoder_loss_train, \
-            adversary_loss_train, classifier_loss_train = self.train()
+                adversary_loss_train, classifier_loss_train = self.train()
             self.logger.log_metric("Autoencoder Loss", "train loss", autoencoder_loss_train, epoch)
             self.logger.log_metric("Adversary Loss", "train loss", adversary_loss_train, epoch)
             self.logger.log_metric("Classifier Loss", "train loss", classifier_loss_train, epoch)
+            self.logger.log_metric("Total Loss", "train loss", total_loss_train, epoch)
 
             total_loss_test, autoencoder_loss_test, \
-            adversary_loss_test, classifier_loss_test = self.test()
+                adversary_loss_test, classifier_loss_test = self.test()
             self.logger.log_metric("Autoencoder Loss", "test loss", autoencoder_loss_test, epoch)
             self.logger.log_metric("Adversary Loss", "test loss", adversary_loss_test, epoch)
             self.logger.log_metric("Classifier Loss", "test loss", classifier_loss_test, epoch)
+            self.logger.log_metric("Total Loss", "test loss", total_loss_test, epoch)
             if epoch % self.eval_step_fair == 0:
-                results = self.calc_fair_metrics(train=True)
+                results = self.calc_fair_metrics()
 
-                self.logger.log_metric("Accuracy", "Unfair test", results_['Unfair test'][0][0], epoch)
-                self.logger.log_metric("Accuracy", "Unfair train", results_['Unfair train'][0][0], epoch)
-                self.logger.log_metric("Accuracy", self.name + ' test', results[self.name + ' test'][0][0], epoch)
-                self.logger.log_metric("Accuracy", self.name + ' train', results[self.name + ' train'][0][0], epoch)
+                self.logger.log_metric("Accuracy", "Unfair test", results_['Unfair test'][0], epoch)
+                self.logger.log_metric("Accuracy", "Unfair train", results_['Unfair train'][0], epoch)
+                self.logger.log_metric("Accuracy", self.name + ' test', results[self.name + ' test'][0], epoch)
+                self.logger.log_metric("Accuracy", self.name + ' train', results[self.name + ' train'][0], epoch)
+                self.logger.log_metric("Accuracy", self.name + ' test NN', results[self.name + ' test'][4], epoch)
+                self.logger.log_metric("Accuracy", self.name + ' train NN', results[self.name + ' train'][4], epoch)
 
-                self.logger.log_metric("ΔDP", "Unfair test", results_['Unfair test'][0][1], epoch)
-                self.logger.log_metric("ΔDP", "Unfair train", results_['Unfair train'][0][1], epoch)
-                self.logger.log_metric("ΔDP", self.name + ' test', results[self.name + ' test'][0][1], epoch)
-                self.logger.log_metric("ΔDP", self.name + ' train', results[self.name + ' train'][0][1], epoch)
+                self.logger.log_metric("ΔDP", "Unfair test", results_['Unfair test'][1], epoch)
+                self.logger.log_metric("ΔDP", "Unfair train", results_['Unfair train'][1], epoch)
+                self.logger.log_metric("ΔDP", self.name + ' test', results[self.name + ' test'][1], epoch)
+                self.logger.log_metric("ΔDP", self.name + ' train', results[self.name + ' train'][1], epoch)
+                self.logger.log_metric("ΔDP", self.name + ' test NN', results[self.name + ' test'][5], epoch)
+                self.logger.log_metric("ΔDP", self.name + ' train NN', results[self.name + ' train'][5], epoch)
 
-                self.logger.log_metric("ΔEOD", "Unfair test", results_['Unfair test'][0][2], epoch)
-                self.logger.log_metric("ΔEOD", "Unfair train", results_['Unfair train'][0][2], epoch)
-                self.logger.log_metric("ΔEOD", self.name + ' test', results[self.name + ' test'][0][2], epoch)
-                self.logger.log_metric("ΔEOD", self.name + ' train', results[self.name + ' train'][0][2], epoch)
+                self.logger.log_metric("ΔEOD", "Unfair test", results_['Unfair test'][2], epoch)
+                self.logger.log_metric("ΔEOD", "Unfair train", results_['Unfair train'][2], epoch)
+                self.logger.log_metric("ΔEOD", self.name + ' test', results[self.name + ' test'][2], epoch)
+                self.logger.log_metric("ΔEOD", self.name + ' train', results[self.name + ' train'][2], epoch)
+                self.logger.log_metric("ΔEOD", self.name + ' test NN', results[self.name + ' test'][6], epoch)
+                self.logger.log_metric("ΔEOD", self.name + ' train NN', results[self.name + ' train'][6], epoch)
 
-                self.logger.log_metric("ΔEOP", "Unfair test", results_['Unfair test'][0][3], epoch)
-                self.logger.log_metric("ΔEOP", "Unfair train", results_['Unfair train'][0][3], epoch)
-                self.logger.log_metric("ΔEOP", self.name + ' test', results[self.name + ' test'][0][3], epoch)
-                self.logger.log_metric("ΔEOP", self.name + ' train', results[self.name + ' train'][0][3], epoch)
+                self.logger.log_metric("ΔEOP", "Unfair test", results_['Unfair test'][3], epoch)
+                self.logger.log_metric("ΔEOP", "Unfair train", results_['Unfair train'][3], epoch)
+                self.logger.log_metric("ΔEOP", self.name + ' test', results[self.name + ' test'][3], epoch)
+                self.logger.log_metric("ΔEOP", self.name + ' train', results[self.name + ' train'][3], epoch)
+                self.logger.log_metric("ΔEOP", self.name + ' test NN', results[self.name + ' test'][7], epoch)
+                self.logger.log_metric("ΔEOP", self.name + ' train NN', results[self.name + ' train'][7], epoch)
 
                 self.logger.log_metric("Test Acc/Fair", "DP Unfair",
-                                       results_['Unfair test'][0][0] / (1 + results_['Unfair test'][0][1]),
+                                       results_['Unfair test'][0] / (1 + results_['Unfair test'][1]),
                                        epoch)
                 self.logger.log_metric("Test Acc/Fair", "EOD Unfair",
-                                       results_['Unfair test'][0][0] / (1 + results_['Unfair test'][0][2]),
+                                       results_['Unfair test'][0] / (1 + results_['Unfair test'][2]),
                                        epoch)
                 self.logger.log_metric("Test Acc/Fair", "EOP Unfair",
-                                       results_['Unfair test'][0][0] / (1 + results_['Unfair test'][0][3]),
+                                       results_['Unfair test'][0] / (1 + results_['Unfair test'][3]),
                                        epoch)
 
                 self.logger.log_metric("Test Acc/Fair", "DP",
-                                       results[self.name + ' test'][0][0] / (1 + results[self.name + ' test'][0][1]),
+                                       results[self.name + ' test'][0] / (1 + results[self.name + ' test'][1]),
                                        epoch)
                 self.logger.log_metric("Test Acc/Fair", "EOD",
-                                       results[self.name + ' test'][0][0] / (1 + results[self.name + ' test'][0][2]),
+                                       results[self.name + ' test'][0] / (1 + results[self.name + ' test'][2]),
                                        epoch)
                 self.logger.log_metric("Test Acc/Fair", "EOP",
-                                       results[self.name + ' test'][0][0] / (1 + results[self.name + ' test'][0][3]),
+                                       results[self.name + ' test'][0] / (1 + results[self.name + ' test'][3]),
+                                       epoch)
+                self.logger.log_metric("Test Acc/Fair", "DP NN",
+                                       results[self.name + ' test'][4] / (1 + results[self.name + ' test'][5]),
+                                       epoch)
+                self.logger.log_metric("Test Acc/Fair", "EOD NN",
+                                       results[self.name + ' test'][4] / (1 + results[self.name + ' test'][6]),
+                                       epoch)
+                self.logger.log_metric("Test Acc/Fair", "EOP NN",
+                                       results[self.name + ' test'][4] / (1 + results[self.name + ' test'][7]),
                                        epoch)
 
-            self.logger.log_metric("ε", "autoencoder", privacy_engines['autoencoder'].get_epsilon(
-                self.privacy_args.delta), epoch)
-            self.logger.log_metric("ε", "adversary", privacy_engines['adversary'].get_epsilon(
-                self.privacy_args.delta), epoch)
-            self.logger.log_metric("ε", "classifier", privacy_engines['classifier'].get_epsilon(
-                self.privacy_args.delta), epoch)
+            if 'autoencoder' in self.privacy_args.privacy_in:
+                self.logger.log_metric("ε", "autoencoder", privacy_engines['autoencoder'].get_epsilon(
+                    self.privacy_args.delta), epoch)
+            if 'adversary' in self.privacy_args.privacy_in:
+                self.logger.log_metric("ε", "adversary", privacy_engines['adversary'].get_epsilon(
+                    self.privacy_args.delta), epoch)
+            if 'classifier' in self.privacy_args.privacy_in:
+                self.logger.log_metric("ε", "classifier", privacy_engines['classifier'].get_epsilon(
+                    self.privacy_args.delta), epoch)
 
         if self.device_name == 'cuda':
             torch.cuda.empty_cache()
