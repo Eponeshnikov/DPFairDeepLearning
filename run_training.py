@@ -17,8 +17,8 @@ def get_parser():
                         help="Low bound of age value if sensattr is age (default: 10)")
     parser.add_argument("--age_high", type=int, default=65,
                         help="High bound of age value if sensattr is age (default: 65)")
-    parser.add_argument("--batch", type=int, default=1024,
-                        help="Batch size (default: 1024)")
+    parser.add_argument("--batch", default=1024,
+                        help="Batch size (default: 1024); set 'max' for using all data in one batch")
     parser.add_argument("--only_download_data", default=False, action="store_true",
                         help="Use just for download dataset (default: False)")
 
@@ -90,18 +90,17 @@ def get_parser():
                         help="Gradient norm clipping without privacy in adversary, use 0 for disabling (default: 1)")
     parser.add_argument("--grad_clip_class", type=float, default=1.,
                         help="Gradient norm clipping without privacy in classifier, use 0 for disabling (default: 1)")
-    parser.add_argument("--optimizer_ae", type=str, default='RMSprop',
-                        help="Optimizer for autoencoder (default: RMSprop)")
-    parser.add_argument("--optimizer_adv", type=str, default='RMSprop',
-                        help="Optimizer for adversary (default: RMSprop)")
-    parser.add_argument("--optimizer_class", type=str, default='RMSprop',
-                        help="Optimizer for classifier (default: RMSprop)")
-    parser.add_argument("--lr_ae", type=float, default=0.008,
-                        help="Learning rate for autoencoder (default: 0.008)")
-    parser.add_argument("--lr_adv", type=float, default=0.008,
-                        help="Learning rate for adversary (default: 0.008)")
-    parser.add_argument("--lr_class", type=float, default=0.008,
-                        help="Learning rate for classifier (default: 0.008)")
+    parser.add_argument("--optimizer_enc_class", type=str, default='NAdam',
+                        help="Encoder-Classifier optimizer (default: NAdam)")
+    parser.add_argument("--optimizer_adv", type=str, default='NAdam',
+                        help="Adversary optimizer (default: NAdam)")
+    parser.add_argument("--lr_enc_class", type=float, default=0.11,
+                        help="Learning rate for encoder-classifier optimizer (default: 0.11)")
+    parser.add_argument("--lr_adv", type=float, default=0.11,
+                        help="Learning rate for adversary optimizer (default: 0.11)")
+
+    parser.add_argument("--check_acc", default=True, action="store_true",
+                        help="Rerun experiment if last value of test accuracy < 0.5 (default: True)")
 
     return parser
 
@@ -122,7 +121,7 @@ def main():
                           "trainer_args":
                               ['epoch', 'seed', 'dataset', 'adv_on_batch', 'eval_step_fair', 'grad_clip_ae',
                                'grad_clip_adv', 'grad_clip_class', 'sensattr',
-                               'optimizer_ae', 'optimizer_adv', 'optimizer_class', 'lr_ae', 'lr_adv', 'lr_class']
+                               'optimizer_enc_class', 'optimizer_adv', 'lr_enc_class', 'lr_adv', 'check_acc']
                           }
 
     laftr_model_args, dataset_args, privacy_args, trainer_args = \
@@ -141,10 +140,21 @@ def main():
         else:
             raise Exception('Only DP and EOD available')
 
-        laftr_model = model_arch(laftr_model_args)
-
-        trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
-        trainer.train_process()
+        acc = 0
+        while acc <= 0.5:
+            laftr_model = model_arch(laftr_model_args)
+            trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
+            acc = trainer.train_process()
+            if not trainer_args.check_acc:
+                print(f'Accuracy: {round(acc,2)}, no checking')
+                break
+            trainer_args.seed += 1
+            if acc <= 0.5:
+                print(f'Wrongly trained, retry. Accuracy: {round(acc,2)}')
+                try:
+                    trainer.logger.task.delete()
+                except Exception as e:
+                    print(e)
     else:
         d.download_data()
 

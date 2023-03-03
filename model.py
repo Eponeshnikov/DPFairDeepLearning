@@ -33,6 +33,7 @@ class AbstractModel(ABC):
         self.autoencoder = self.autoencoder.to(self.device)
         self.adversary = self.adversary.to(self.device)
         self.classifier = self.classifier.to(self.device)
+        self.encoderclassifier = EncoderClassifier(self.autoencoder.encoder, self.classifier).to(self.device)
 
     @abstractmethod
     def get_adv_loss(self, a_pred, a):
@@ -128,6 +129,18 @@ class AutoEncoder(nn.Module):
         z = self.encoder(x)
         x = self.decoder(z)
         return x, z
+
+
+class EncoderClassifier(nn.Module):
+    def __init__(self, encoder, classifier):
+        super(EncoderClassifier, self).__init__()
+        self.encoder = encoder
+        self.classifier = classifier
+
+    def forward(self, x):
+        z = self.encoder(x)
+        y = self.classifier(z)
+        return y
 
 
 class MLP(nn.Module):

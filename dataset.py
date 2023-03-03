@@ -93,8 +93,10 @@ class Dataset:
     def get_dataloader(self):
         if any([self.train_data is None, self.test_data is None]):
             self.get_dataset(return_=False)
-        self.train_data_loader = DataLoader(self.train_data, batch_size=len(self.train_data), shuffle=True)
-        self.test_data_loader = DataLoader(self.test_data, batch_size=len(self.test_data), shuffle=False)
+        batch_size = [len(self.train_data), len(self.test_data)] if self.args.batch == 'max'\
+            else [int(self.args.batch), int(self.args.batch)]
+        self.train_data_loader = DataLoader(self.train_data, batch_size=batch_size[0], shuffle=True)
+        self.test_data_loader = DataLoader(self.test_data, batch_size=batch_size[1], shuffle=False)
         return self.train_data_loader, self.test_data_loader
 
     def n_features(self):

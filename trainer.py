@@ -16,11 +16,11 @@ warnings.simplefilter("ignore")
 def str2optimizer(stropt):
     if stropt == 'RMSprop':
         optimizer = optim.RMSprop
-    elif stropt == 'Adam':
+    elif stropt == 'NAdam':
         optimizer = optim.NAdam
     else:
         optimizer = None
-        raise Exception('Only RMSprop and Adam supported')
+        raise Exception('Only RMSprop and NAdam supported')
     return optimizer
 
 
@@ -39,14 +39,11 @@ class Trainer:
         self.clip_grad = {'ae': trainer_args.grad_clip_ae, 'adv': trainer_args.grad_clip_adv,
                           'class': trainer_args.grad_clip_class}
         self.eval_step_fair = trainer_args.eval_step_fair
-        self.epoch_plt = {"autoencoder": 0, "classifier": 0, "adversary": 0}
+        self.epoch_plt = {"encoder": 0, "classifier": 0, "adversary": 0}
         self.params_plt = {}
-        # optimizer for autoencoder nets
-        self.autoencoder_op = str2optimizer(trainer_args.optimizer_ae)(
-            list(self.model.autoencoder.encoder.parameters()) + list(self.model.classifier.parameters()), lr=trainer_args.lr_ae)
-        # optimizer for classifier nets
-        #self.classifier_op = str2optimizer(trainer_args.optimizer_class)(
-        #    self.model.classifier.parameters(), lr=trainer_args.lr_class)
+        # optimizer for encoder-classifier nets
+        self.encoder_class_op = str2optimizer(trainer_args.optimizer_enc_class)(
+            self.model.encoderclassifier.parameters(), lr=trainer_args.lr_enc_class)
         # optimizer for adversary nets
         self.adversary_op = str2optimizer(trainer_args.optimizer_adv)(
             self.model.adversary.parameters(), lr=trainer_args.lr_adv)
@@ -71,7 +68,7 @@ class Trainer:
         self.logger.add_params(dataset_params)
 
     def train_adversary_on_batch(self, batch_data, sensitive_a, label_y):
-        """ Train the adversary with fixed classifier-autoencoder """
+        """ Train the adversary with fixed classifier-encoder """
         # reset gradient
         self.model.classifier.train()
         self.model.autoencoder.train()
@@ -93,8 +90,8 @@ class Trainer:
             adv_input = torch.cat(
                 (z, label_y.view(label_y.shape[0], 1)), 1)
 
-        cl_error = self.model.get_class_loss(pred_y, label_y)
-        rec_error = self.model.get_recon_loss(reconst, batch_data)
+        # cl_error = self.model.get_class_loss(pred_y, label_y)
+        # rec_error = self.model.get_recon_loss(reconst, batch_data)
 
         # predict sensitive attribut from latent dimension
         pred_a = self.model.adversary(adv_input)
@@ -102,10 +99,10 @@ class Trainer:
         adv_error = self.model.get_adv_loss(pred_a, sentive_feature)
 
         # Compute the overall loss and take a negative gradient for the adversary
-        error = adv_error#-self.model.get_loss(rec_error, cl_error, adv_error, label_y)
+        error = adv_error  # -self.model.get_loss(rec_error, cl_error, adv_error, label_y)
         error.backward()
-        grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
-        self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], self.step)
+        grad_norms = [self.get_grad_norm(i) for i in ['encoder', 'classifier', 'adversary']]
+        self.logger.log_metric("Gradient norms", "Encoder", grad_norms[0], self.step)
         self.logger.log_metric("Gradient norms", "Classifier", grad_norms[1], self.step)
         self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], self.step)
         if self.clip_grad['adv'] > 0 and 'adversary' not in self.privacy_args.privacy_in:
@@ -115,9 +112,8 @@ class Trainer:
         return adv_error
 
     def make_private(self):
-        privacy_engines = {"autoencoder": PrivacyEngine(),
-                           "adversary": PrivacyEngine(),
-                           "classifier": PrivacyEngine()}
+        privacy_engines = {"encoder_classifier": PrivacyEngine(),
+                           "adversary": PrivacyEngine()}
         private_params = {}
         if self.privacy_args.privacy_in is None:
             self.privacy_args.privacy_in = []
@@ -131,13 +127,13 @@ class Trainer:
         self.logger.add_params(private_params)
         self.logger.task.add_tags(tags)
         for part in self.privacy_args.privacy_in:
-            if part == 'autoencoder':
+            if part == 'encoder_classifier':
                 gen = torch.Generator(device=self.device_name)
                 gen.manual_seed(self.seed)
-                self.model.autoencoder, self.autoencoder_op, self.train_data = \
+                self.model.encoderclassifier, self.encoder_class_op, self.train_data = \
                     privacy_engines[part].make_private_with_epsilon(
-                        module=self.model.autoencoder,
-                        optimizer=self.autoencoder_op,
+                        module=self.model.encoderclassifier,
+                        optimizer=self.encoder_class_op,
                         data_loader=self.train_data,
                         epochs=self.epoch,
                         target_epsilon=self.privacy_args.eps,
@@ -159,25 +155,11 @@ class Trainer:
                         max_grad_norm=self.privacy_args.max_grad_norm,
                         noise_generator=gen
                     )
-            elif part == 'classifier':
-                gen = torch.Generator(device=self.device_name)
-                gen.manual_seed(self.seed + 2)
-                self.model.classifier, self.classifier_op, self.train_data = \
-                    privacy_engines[part].make_private_with_epsilon(
-                        module=self.model.classifier,
-                        optimizer=self.classifier_op,
-                        data_loader=self.train_data,
-                        epochs=self.epoch,
-                        target_epsilon=self.privacy_args.eps,
-                        target_delta=self.privacy_args.delta,
-                        max_grad_norm=self.privacy_args.max_grad_norm,
-                        noise_generator=gen
-                    )
         return privacy_engines
 
     def get_grad_norm(self, model_):
         model = None
-        if model_ == 'autoencoder':
+        if model_ == 'encoder':
             model = self.model.autoencoder.encoder
         elif model_ == 'classifier':
             model = self.model.classifier
@@ -211,8 +193,8 @@ class Trainer:
             self.model.adversary.train()
 
             # reset the gradients back to zero
-            self.autoencoder_op.zero_grad()
-            #self.classifier_op.zero_grad()
+            self.encoder_class_op.zero_grad()
+            # self.classifier_op.zero_grad()
 
             # compute reconstruction and latent space  the
             reconstructed, z = self.model.autoencoder(train_data)
@@ -238,17 +220,19 @@ class Trainer:
 
             # backpropagate the gradient encoder-decoder-classifier with fixed adversary
             total_loss.backward()
-            grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
-            self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], self.step)
+            grad_norms = [self.get_grad_norm(i) for i in ['encoder', 'classifier', 'adversary']]
+            self.logger.log_metric("Gradient norms", "Encoder", grad_norms[0], self.step)
             self.logger.log_metric("Gradient norms", "Classifier", grad_norms[1], self.step)
             self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], self.step)
-            # update parameter of the classifier and the autoencoder
-            if self.clip_grad['ae'] > 0 and 'autoencoder' not in self.privacy_args.privacy_in:
+            # update parameter of the classifier and the encoder
+            if self.clip_grad['ae'] > 0 and 'encoder_classifier' not in self.privacy_args.privacy_in:
                 torch.nn.utils.clip_grad_norm(self.model.autoencoder.encoder.parameters(), self.clip_grad['ae'])
-            if self.clip_grad['class'] > 0 and 'classifier' not in self.privacy_args.privacy_in:
+            if self.clip_grad['ae'] > 0 and 'autoencoder' not in self.privacy_args.privacy_in:
+                torch.nn.utils.clip_grad_norm(self.model.autoencoder.decoder.parameters(), self.clip_grad['ae'])
+            if self.clip_grad['class'] > 0 and 'encoder_classifier' not in self.privacy_args.privacy_in:
                 torch.nn.utils.clip_grad_norm(self.model.classifier.parameters(), self.clip_grad['class'])
-            #self.classifier_op.step()
-            self.autoencoder_op.step()
+            # self.classifier_op.step()
+            self.encoder_class_op.step()
 
             adversary_loss = 0
             # train the adversary
@@ -366,11 +350,12 @@ class Trainer:
         acc_, dp_, eqodd_, eopp_ = fair_scores([y_train, y_test, y_pred_train, y_pred_test], [S_train, S_test])
         results_["Unfair test"] = (acc_[1], dp_[1], eqodd_[1], eopp_[1])
         results_["Unfair train"] = (acc_[0], dp_[0], eqodd_[0], eopp_[0])
+        results = {self.name + ' test': [0]}
         for epoch in progressbar(range(1, self.epoch + 1)):  # loop over dataset
-            #grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
-            #self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], epoch)
-            #self.logger.log_metric("Gradient norms", "Classifier", grad_norms[1], epoch)
-            #self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], epoch)
+            # grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
+            # self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], epoch)
+            # self.logger.log_metric("Gradient norms", "Classifier", grad_norms[1], epoch)
+            # self.logger.log_metric("Gradient norms", "Adversary", grad_norms[2], epoch)
             # train
             total_loss_train, autoencoder_loss_train, \
                 adversary_loss_train, classifier_loss_train = self.train()
@@ -444,16 +429,15 @@ class Trainer:
                 self.logger.log_metric("Test Acc/Fair", "EOP NN",
                                        results[self.name + ' test'][4] / (1 + results[self.name + ' test'][7]),
                                        epoch)
-
-            if 'autoencoder' in self.privacy_args.privacy_in:
-                self.logger.log_metric("ε", "autoencoder", privacy_engines['autoencoder'].get_epsilon(
-                    self.privacy_args.delta), epoch)
-            if 'adversary' in self.privacy_args.privacy_in:
-                self.logger.log_metric("ε", "adversary", privacy_engines['adversary'].get_epsilon(
-                    self.privacy_args.delta), epoch)
-            if 'classifier' in self.privacy_args.privacy_in:
-                self.logger.log_metric("ε", "classifier", privacy_engines['classifier'].get_epsilon(
-                    self.privacy_args.delta), epoch)
+            if epoch > 1:
+                if 'encoder_classifier' in self.privacy_args.privacy_in:
+                    self.logger.log_metric("ε", "encoder_classifier", privacy_engines['encoder_classifier'].get_epsilon(
+                        self.privacy_args.delta), epoch)
+                if 'adversary' in self.privacy_args.privacy_in:
+                    self.logger.log_metric("ε", "adversary", privacy_engines['adversary'].get_epsilon(
+                        self.privacy_args.delta), epoch)
 
         if self.device_name == 'cuda':
             torch.cuda.empty_cache()
+        self.logger.task.close()
+        return results[self.name + ' test'][0]
