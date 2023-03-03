@@ -350,7 +350,7 @@ class Trainer:
         acc_, dp_, eqodd_, eopp_ = fair_scores([y_train, y_test, y_pred_train, y_pred_test], [S_train, S_test])
         results_["Unfair test"] = (acc_[1], dp_[1], eqodd_[1], eopp_[1])
         results_["Unfair train"] = (acc_[0], dp_[0], eqodd_[0], eopp_[0])
-        results = {self.name + ' test': [0 for i in range(8)]}
+        results = {self.name + ' test': [1 for i in range(8)]}
         for epoch in progressbar(range(1, self.epoch + 1)):  # loop over dataset
             # grad_norms = [self.get_grad_norm(i) for i in ['autoencoder', 'classifier', 'adversary']]
             # self.logger.log_metric("Gradient norms", "Autoencoder", grad_norms[0], epoch)

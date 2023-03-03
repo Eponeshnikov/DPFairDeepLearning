@@ -15,6 +15,7 @@ no_cuda = False
 check_acc = True
 show_py_command = False
 not_run = False
+continue_from = 0
 # ================================
 # ======= Model parameters =======
 arch = ['DP', 'EOD']
@@ -89,7 +90,7 @@ if random_seed:
 else:
     seeds = np.repeat(0, repeats * len(all_exp))
 
-print(f'Total number of experiments: {len((all_exp * repeats))}')
+print(f'Total number of experiments: {len((all_exp * repeats)[continue_from:])}')
 
 # ======= Download datasets ======
 for ds in dataset:
@@ -102,7 +103,7 @@ for ds in dataset:
 thread_list = []
 n_threads = 0
 start_time = time.time()
-for i, (p_l, seed) in enumerate(zip((all_exp * repeats), seeds)):
+for i, (p_l, seed) in enumerate(zip((all_exp * repeats)[continue_from:], seeds[continue_from:])):
     n_threads += 1
     command = gen_exec_str(p_l, param_names, seed, no_cuda, check_acc)
     if show_py_command:
