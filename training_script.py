@@ -49,7 +49,7 @@ eps = [1, 3, 10, 30]
 max_grad_norm = [10]
 # ================================
 # ====== Training parameters =====
-epoch = [10]
+epoch = [250]
 adv_on_batch = [1]
 eval_step_fair = [10]
 grad_clip_ae = [10]
