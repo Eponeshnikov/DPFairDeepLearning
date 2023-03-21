@@ -122,8 +122,10 @@ class AutoEncoder(nn.Module):
         self.enc_neurons = [args.n_features] + args.edepth * [args.ewidths] + [args.zdim]
         self.dec_neurons = [args.zdim] + args.edepth * [args.ewidths] + [args.n_features]
 
-        self.encoder = MLP(self.enc_neurons, activ=args.activ_ae, end_activ=args.e_activ_ae, xavier=args.xavier)
-        self.decoder = MLP(self.dec_neurons, activ=args.activ_ae, end_activ=args.e_activ_ae, xavier=args.xavier)
+        self.encoder = MLP(self.enc_neurons, activ=args.activ_ae, end_activ=args.e_activ_ae,
+                           xavier=args.xavier, seed=args.seed)
+        self.decoder = MLP(self.dec_neurons, activ=args.activ_ae, end_activ=args.e_activ_ae,
+                           xavier=args.xavier, seed=args.seed)
 
     def forward(self, x):
         z = self.encoder(x)
@@ -144,7 +146,7 @@ class EncoderClassifier(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, num_neurons, activ="leakyrelu", end_activ='sigmoid', xavier=False):
+    def __init__(self, num_neurons, activ="leakyrelu", end_activ='sigmoid', xavier=False, seed=0):
         """Initializes MLP unit"""
         super(MLP, self).__init__()
         self.num_neurons = num_neurons
@@ -168,6 +170,8 @@ class MLP(nn.Module):
             for hidden in self.hiddens:
                 if isinstance(hidden, nn.Linear):
                     torch.nn.init.xavier_uniform_(hidden.weight)
+                    np.random.seed(seed)
+                    hidden.bias.data.fill_(np.random.random()/50)
 
     def get_activ_func(self, activ):
         if activ == "softplus":

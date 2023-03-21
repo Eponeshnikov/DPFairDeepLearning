@@ -114,7 +114,7 @@ def main():
                               ['arch', 'edepth', 'ewidths', 'adepth', 'awidths', 'cdepth', 'cwidths', 'zdim',
                                'activ_ae', 'activ_adv', 'activ_class', 'e_activ_ae', 'e_activ_adv', 'e_activ_class',
                                'classweight', 'aeweight', 'advweight', 'n_features', 'n_classes', 'n_groups', 'xavier',
-                               'no_cuda'],
+                               'no_cuda', 'seed'],
                           "dataset_args":
                               ['dataset', 'data_dir', 'batch', 'age_low', 'age_high', 'sensattr', 'only_download_data',
                                'seed'],
@@ -157,6 +157,7 @@ def main():
             if any([acc<=0.5, not np.isclose(dp,0,atol=0.1), not np.isclose(eod,0,atol=0.1)]):
                 print(f'Wrongly trained, retry. Accuracy: {round(acc,2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)}')
                 try:
+                    pass
                     trainer.logger.task.delete()
                 except Exception as e:
                     print(e)

@@ -7,6 +7,7 @@ from clearml import Task, Logger
 
 class CMLogger:
     def __init__(self, model_name, dataset_name):
+        #Task.set_offline(offline_mode=True)
         self.task = Task.init(project_name='AI Fairness',
                               task_name=f'{model_name}_{dataset_name}_{time.time()}')
 
