@@ -7,12 +7,13 @@ from dataclasses import make_dataclass
 from threading import Thread
 import time
 
+
 # ====== Running parameters ======
 parallel_threads = 2
 repeats = 1
 random_seed = True
 no_cuda = False
-check_acc = True
+check_acc_fair = True
 show_py_command = False
 not_run = False
 continue_from = 0
@@ -39,7 +40,7 @@ xavier = [True]
 # ================================
 # ====== Dataset parameters ======
 data_dir = 'dataset'
-dataset = ['Adult']
+dataset = ['Adult', 'German']
 batch = ['max']
 sensattr = ['sex']
 ages = [(71, 75)]
@@ -105,7 +106,7 @@ n_threads = 0
 start_time = time.time()
 for i, (p_l, seed) in enumerate(zip((all_exp * repeats)[continue_from:], seeds[continue_from:])):
     n_threads += 1
-    command = gen_exec_str(p_l, param_names, seed, no_cuda, check_acc)
+    command = gen_exec_str(p_l, param_names, seed, no_cuda, check_acc_fair)
     if show_py_command:
         print(command)
     if not_run:

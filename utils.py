@@ -48,7 +48,7 @@ def gen_dataclasses(args_dict, name_and_args_dict):
     return result
 
 
-def gen_exec_str(param_list, param_names_, seed_, no_cuda_, check_acc_, python3=False):
+def gen_exec_str(param_list, param_names_, seed_, no_cuda_, check_acc_fair_, python3=False):
     exec_str = 'python3 ' if python3 else 'python '
     exec_str += 'run_training.py'
     for p, n in zip(param_list, param_names_):
@@ -65,6 +65,6 @@ def gen_exec_str(param_list, param_names_, seed_, no_cuda_, check_acc_, python3=
     exec_str += f' --seed {seed_}'
     if no_cuda_:
         exec_str += f' --no_cuda'
-    if check_acc_:
-        exec_str += f' --check_acc'
+    if check_acc_fair_:
+        exec_str += f' --check_acc_fair'
     return exec_str

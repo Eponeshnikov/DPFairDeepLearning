@@ -1,6 +1,7 @@
 import argparse
+import numpy as np
 from dataset import Dataset
-from model import DemParModel, EqualOddModel, EqualOppModel
+from model import DemParModel, EqualOddModel
 from trainer import Trainer
 from utils import gen_dataclasses
 
@@ -99,8 +100,9 @@ def get_parser():
     parser.add_argument("--lr_adv", type=float, default=0.11,
                         help="Learning rate for adversary optimizer (default: 0.11)")
 
-    parser.add_argument("--check_acc", default=True, action="store_true",
-                        help="Rerun experiment if last value of test accuracy < 0.5 (default: True)")
+    parser.add_argument("--check_acc_fair", default=True, action="store_true",
+                        help="Rerun experiment if last value of test accuracy < 0.5"
+                             " and fair metrics > 0.01 (default: True)")
 
     return parser
 
@@ -121,14 +123,15 @@ def main():
                           "trainer_args":
                               ['epoch', 'seed', 'dataset', 'adv_on_batch', 'eval_step_fair', 'grad_clip_ae',
                                'grad_clip_adv', 'grad_clip_class', 'sensattr',
-                               'optimizer_enc_class', 'optimizer_adv', 'lr_enc_class', 'lr_adv', 'check_acc']
+                               'optimizer_enc_class', 'optimizer_adv', 'lr_enc_class', 'lr_adv', 'check_acc_fair']
                           }
 
     laftr_model_args, dataset_args, privacy_args, trainer_args = \
         gen_dataclasses(args.__dict__, name_and_args_dict)
     d = Dataset(dataset_args)
     if not dataset_args.only_download_data:
-        train_dataloader, test_dataloader = d.get_dataloader()
+        device_name = 'cpu' if laftr_model_args.no_cuda else 'cuda'
+        train_dataloader, test_dataloader = d.get_dataloader(device_name)
         laftr_model_args.n_features = d.n_features()
         laftr_model_args.n_classes = d.n_classes()
         laftr_model_args.n_groups = d.n_groups()
@@ -141,16 +144,18 @@ def main():
             raise Exception('Only DP and EOD available')
 
         acc = 0
-        while acc <= 0.5:
+        dp = 1
+        eod = 1
+        while any([acc<=0.5, not np.isclose(dp,0,atol=0.1), not np.isclose(eod,0,atol=0.1)]):
             laftr_model = model_arch(laftr_model_args)
             trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
-            acc = trainer.train_process()
-            if not trainer_args.check_acc:
-                print(f'Accuracy: {round(acc,2)}, no checking')
+            acc, dp, eod = trainer.train_process()
+            if not trainer_args.check_acc_fair:
+                print(f'Accuracy: {round(acc,2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)} no checking')
                 break
             trainer_args.seed += 1
-            if acc <= 0.5:
-                print(f'Wrongly trained, retry. Accuracy: {round(acc,2)}')
+            if any([acc<=0.5, not np.isclose(dp,0,atol=0.1), not np.isclose(eod,0,atol=0.1)]):
+                print(f'Wrongly trained, retry. Accuracy: {round(acc,2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)}')
                 try:
                     trainer.logger.task.delete()
                 except Exception as e:
