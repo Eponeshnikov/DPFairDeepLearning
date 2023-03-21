@@ -59,8 +59,8 @@ grad_clip_adv = [10]
 grad_clip_class = [10]
 optimizer_enc_class = ['NAdam']
 optimizer_adv = ['NAdam']
-lr_enc_class = [0.11]
-lr_adv = [0.11]
+lr_enc_class = [0.14]
+lr_adv = [0.14]
 # ================================
 
 all_exp = list(
@@ -73,10 +73,16 @@ all_exp = list(
     )
 )
 
-private_parts = [i for i in privacy_in if len(i) > 0]
+#Delete unnecessary args (sensattr)
 all_exp = [i for i in all_exp if 'sex' not in i] + [i for i in all_exp if 'sex' in i and ages[0] in i]
+#Delete unnecessary args (eps) if no privacy
+private_parts = [i for i in privacy_in if len(i) > 0]
 all_exp = [i for i in all_exp if any([j in i for j in private_parts])] + \
           [i for i in all_exp if not any([j in i for j in private_parts]) and i[23] == eps[0]]
+
+#Sort by dataset
+all_exp = [[i for i in all_exp if i[18] == j] for j in dataset]
+all_exp = [item for sublist in all_exp for item in sublist]
 
 param_names = [
     'arch', 'edepth', 'ewidths', 'adepth', 'awidths', 'cdepth', 'cwidths', 'zdim', 'activ_ae', 'activ_adv',
