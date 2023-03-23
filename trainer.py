@@ -5,7 +5,7 @@ from progressbar import progressbar
 from model import EqualOddModel
 from opacus import PrivacyEngine
 from sklearn.linear_model import LogisticRegression
-from torch.optim.lr_scheduler import PolynomialLR
+from torch.optim.lr_scheduler import PolynomialLR, ConstantLR
 from fairness_metrics import fair_scores
 import numpy as np
 import warnings
@@ -24,7 +24,19 @@ def str2optimizer(stropt):
         raise Exception('Only RMSprop and NAdam supported')
     return optimizer
 
+def str2scheduler(opt, epoch, scheduler):
+    if scheduler[0] == 'PolynomialLR':
+        return PolynomialLR(opt, total_iters=epoch, power=scheduler[1])
+    elif scheduler[0] == 'ConstantLR':
+        return ConstantLR(opt, total_iters=epoch)
+    else:
+        raise Exception('Only ConstantLR and PolynomialLR supported')
 
+def str2eval_model(streval_model):
+    if streval_model == 'LR':
+        return LogisticRegression(max_iter=1000)
+    else:
+        raise Exception('Only LogisticRegression (LR) supported')
 class Trainer:
     def __init__(self, model, data, trainer_args, privacy_args):
         """Trainer for adversarial fair representation"""
@@ -32,6 +44,10 @@ class Trainer:
         torch.backends.cudnn.benchmark = True
         self.device_name = model.device_name
         self.device = torch.device(self.device_name)
+        self.eval_model_name = trainer_args.eval_model
+        self.eval_model = str2eval_model(self.eval_model_name)
+
+        self.offline_mode = trainer_args.offline_mode
 
         self.epoch = trainer_args.epoch
         self.adv_on_batch = trainer_args.adv_on_batch
@@ -49,14 +65,17 @@ class Trainer:
         # optimizer for adversary nets
         self.adversary_op = str2optimizer(trainer_args.optimizer_adv)(
             self.model.adversary.parameters(), lr=trainer_args.lr_adv)
-        self.enc_class_sch = PolynomialLR(self.encoder_class_op, total_iters=self.epoch, power=2.0)
-        self.adv_sch = PolynomialLR(self.adversary_op, total_iters=self.epoch, power=2.0)
+        self.enc_class_sch = str2scheduler(
+            self.encoder_class_op, self.epoch, (trainer_args.enc_class_sch, trainer_args.enc_class_sch_pow))
+        self.adv_sch = str2scheduler(
+            self.adversary_op, self.epoch, (trainer_args.adv_sch, trainer_args.adv_sch_pow))
+
         self.train_data = data[0]
         self.test_data = data[1]
 
         self.name = model.name
 
-        self.logger = CMLogger(self.name, trainer_args.dataset)
+        self.logger = CMLogger(self.name, trainer_args.dataset, trainer_args.offline_mode)
         self.logger.task.add_tags(trainer_args.dataset)
         tags = [self.name, trainer_args.sensattr]
         self.logger.task.add_tags(tags)
@@ -307,7 +326,7 @@ class Trainer:
 
     def calc_fair_metrics(self):
         results = {}
-        clr = LogisticRegression(max_iter=1000)
+        clr = self.eval_model
         X_test = self.test_data.dataset.X.cpu().detach().numpy()
         y_test = self.test_data.dataset.y.cpu().detach().numpy()
         S_test = self.test_data.dataset.A.cpu().detach().numpy()
@@ -339,7 +358,7 @@ class Trainer:
     def train_process(self):
         self.step = 0
         privacy_engines = self.make_private()
-        clr = LogisticRegression(max_iter=1000)
+        clr = self.eval_model
         X_test = self.test_data.dataset.X.cpu().detach().numpy()
         y_test = self.test_data.dataset.y.cpu().detach().numpy()
         S_test = self.test_data.dataset.A.cpu().detach().numpy()
@@ -382,7 +401,8 @@ class Trainer:
 
         if self.device_name == 'cuda':
             torch.cuda.empty_cache()
-        self.logger.task.close()
+        #self.logger.task.close()
+        time.sleep(5)
         return results[self.name + ' test'][4], results[self.name + ' test'][5], results[self.name + ' test'][6]
 
     def log_metric_test(self, results_, epoch):
@@ -396,31 +416,31 @@ class Trainer:
 
         self.logger.log_metric("Accuracy", "Unfair test", results_['Unfair test'][0], epoch)
         self.logger.log_metric("Accuracy", "Unfair train", results_['Unfair train'][0], epoch)
-        self.logger.log_metric("Accuracy", self.name + ' test', results[self.name + ' test'][0], epoch)
-        self.logger.log_metric("Accuracy", self.name + ' train', results[self.name + ' train'][0], epoch)
-        self.logger.log_metric("Accuracy", self.name + ' test NN', results[self.name + ' test'][4], epoch)
-        self.logger.log_metric("Accuracy", self.name + ' train NN', results[self.name + ' train'][4], epoch)
+        self.logger.log_metric("Accuracy", 'Model' + ' test', results[self.name + ' test'][0], epoch)
+        self.logger.log_metric("Accuracy", 'Model' + ' train', results[self.name + ' train'][0], epoch)
+        self.logger.log_metric("Accuracy", 'Model' + ' test NN', results[self.name + ' test'][4], epoch)
+        self.logger.log_metric("Accuracy", 'Model' + ' train NN', results[self.name + ' train'][4], epoch)
 
         self.logger.log_metric("ΔDP", "Unfair test", results_['Unfair test'][1], epoch)
         self.logger.log_metric("ΔDP", "Unfair train", results_['Unfair train'][1], epoch)
-        self.logger.log_metric("ΔDP", self.name + ' test', results[self.name + ' test'][1], epoch)
-        self.logger.log_metric("ΔDP", self.name + ' train', results[self.name + ' train'][1], epoch)
-        self.logger.log_metric("ΔDP", self.name + ' test NN', results[self.name + ' test'][5], epoch)
-        self.logger.log_metric("ΔDP", self.name + ' train NN', results[self.name + ' train'][5], epoch)
+        self.logger.log_metric("ΔDP", 'Model' + ' test', results[self.name + ' test'][1], epoch)
+        self.logger.log_metric("ΔDP", 'Model' + ' train', results[self.name + ' train'][1], epoch)
+        self.logger.log_metric("ΔDP", 'Model' + ' test NN', results[self.name + ' test'][5], epoch)
+        self.logger.log_metric("ΔDP", 'Model' + ' train NN', results[self.name + ' train'][5], epoch)
 
         self.logger.log_metric("ΔEOD", "Unfair test", results_['Unfair test'][2], epoch)
         self.logger.log_metric("ΔEOD", "Unfair train", results_['Unfair train'][2], epoch)
-        self.logger.log_metric("ΔEOD", self.name + ' test', results[self.name + ' test'][2], epoch)
-        self.logger.log_metric("ΔEOD", self.name + ' train', results[self.name + ' train'][2], epoch)
-        self.logger.log_metric("ΔEOD", self.name + ' test NN', results[self.name + ' test'][6], epoch)
-        self.logger.log_metric("ΔEOD", self.name + ' train NN', results[self.name + ' train'][6], epoch)
+        self.logger.log_metric("ΔEOD", 'Model' + ' test', results[self.name + ' test'][2], epoch)
+        self.logger.log_metric("ΔEOD", 'Model' + ' train', results[self.name + ' train'][2], epoch)
+        self.logger.log_metric("ΔEOD", 'Model' + ' test NN', results[self.name + ' test'][6], epoch)
+        self.logger.log_metric("ΔEOD", 'Model' + ' train NN', results[self.name + ' train'][6], epoch)
 
         self.logger.log_metric("ΔEOP", "Unfair test", results_['Unfair test'][3], epoch)
         self.logger.log_metric("ΔEOP", "Unfair train", results_['Unfair train'][3], epoch)
-        self.logger.log_metric("ΔEOP", self.name + ' test', results[self.name + ' test'][3], epoch)
-        self.logger.log_metric("ΔEOP", self.name + ' train', results[self.name + ' train'][3], epoch)
-        self.logger.log_metric("ΔEOP", self.name + ' test NN', results[self.name + ' test'][7], epoch)
-        self.logger.log_metric("ΔEOP", self.name + ' train NN', results[self.name + ' train'][7], epoch)
+        self.logger.log_metric("ΔEOP", 'Model' + ' test', results[self.name + ' test'][3], epoch)
+        self.logger.log_metric("ΔEOP", 'Model' + ' train', results[self.name + ' train'][3], epoch)
+        self.logger.log_metric("ΔEOP", 'Model' + ' test NN', results[self.name + ' test'][7], epoch)
+        self.logger.log_metric("ΔEOP", 'Model' + ' train NN', results[self.name + ' train'][7], epoch)
 
         self.logger.log_metric("Test Acc/Fair", "DP Unfair",
                                results_['Unfair test'][0] / (1 + results_['Unfair test'][1]),

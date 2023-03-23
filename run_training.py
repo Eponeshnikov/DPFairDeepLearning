@@ -95,6 +95,14 @@ def get_parser():
                         help="Encoder-Classifier optimizer (default: NAdam)")
     parser.add_argument("--optimizer_adv", type=str, default='NAdam',
                         help="Adversary optimizer (default: NAdam)")
+    parser.add_argument("--enc_class_sch", type=str, default='PolynomialLR',
+                        help="Encoder-Classifier scheduler (default: PolynomialLR)")
+    parser.add_argument("--adv_sch", type=str, default='PolynomialLR',
+                        help="Adversary scheduler (default: PolynomialLR)")
+    parser.add_argument("--enc_class_sch_pow", type=float, default=1.5,
+                        help="Power for PolynomialLR encoder-classifier scheduler (default: 1.5)")
+    parser.add_argument("--adv_sch_pow", type=float, default=1.5,
+                        help="Power for PolynomialLR adversary scheduler (default: 1.5)")
     parser.add_argument("--lr_enc_class", type=float, default=0.11,
                         help="Learning rate for encoder-classifier optimizer (default: 0.11)")
     parser.add_argument("--lr_adv", type=float, default=0.11,
@@ -103,6 +111,10 @@ def get_parser():
     parser.add_argument("--check_acc_fair", default=True, action="store_true",
                         help="Rerun experiment if last value of test accuracy < 0.5"
                              " and fair metrics > 0.01 (default: True)")
+    parser.add_argument("--offline_mode", default=False, action="store_true",
+                        help="Offline mode for ClearML (default: False)")
+    parser.add_argument("--eval_model", type=str, default='LR',
+                        help="Model for evaluation metrics (default: LR - LogisticRegression)")
 
     return parser
 
@@ -122,8 +134,9 @@ def main():
                               ['privacy_in', 'delta', 'eps', 'max_grad_norm'],
                           "trainer_args":
                               ['epoch', 'seed', 'dataset', 'adv_on_batch', 'eval_step_fair', 'grad_clip_ae',
-                               'grad_clip_adv', 'grad_clip_class', 'sensattr',
-                               'optimizer_enc_class', 'optimizer_adv', 'lr_enc_class', 'lr_adv', 'check_acc_fair']
+                               'grad_clip_adv', 'grad_clip_class', 'sensattr','optimizer_enc_class', 'optimizer_adv',
+                               'lr_enc_class', 'lr_adv', 'check_acc_fair', 'enc_class_sch', 'adv_sch',
+                               'enc_class_sch_pow', 'adv_sch_pow', 'eval_model', 'offline_mode']
                           }
 
     laftr_model_args, dataset_args, privacy_args, trainer_args = \
@@ -146,19 +159,24 @@ def main():
         acc = 0
         dp = 1
         eod = 1
-        while any([acc<=0.5, not np.isclose(dp,0,atol=0.1), not np.isclose(eod,0,atol=0.1)]):
+        while any([acc<=0.5, not np.isclose(dp,0,atol=0.01), not np.isclose(eod,0,atol=0.01)]):
             laftr_model = model_arch(laftr_model_args)
             trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
             acc, dp, eod = trainer.train_process()
+            trainer.logger.task.close()
             if not trainer_args.check_acc_fair:
                 print(f'Accuracy: {round(acc,2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)} no checking')
                 break
             trainer_args.seed += 1
-            if any([acc<=0.5, not np.isclose(dp,0,atol=0.1), not np.isclose(eod,0,atol=0.1)]):
+            if any([acc<=0.5, not np.isclose(dp,0,atol=0.01), not np.isclose(eod,0,atol=0.01)]):
                 print(f'Wrongly trained, retry. Accuracy: {round(acc,2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)}')
                 try:
-                    pass
-                    trainer.logger.task.delete()
+                    if not trainer_args.offline_mode:
+                        trainer.logger.task.delete()
+                    else:
+                        pass
+                        #import os
+                        #os.rmdir(trainer.logger.task.cache_dir)
                 except Exception as e:
                     print(e)
     else:

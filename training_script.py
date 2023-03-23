@@ -17,9 +17,10 @@ check_acc_fair = True
 show_py_command = False
 not_run = False
 continue_from = 0
+offline_mode = False #Not works with check_acc_fair if condition pass
 # ================================
 # ======= Model parameters =======
-arch = ['DP', 'EOD']
+arch = ['DP']#['DP', 'EOD']
 edepth = [2]
 ewidths = [32]
 adepth = [2]
@@ -40,13 +41,13 @@ xavier = [True]
 # ================================
 # ====== Dataset parameters ======
 data_dir = 'dataset'
-dataset = ['Adult', 'German']
+dataset = ['German']#['Adult', 'German']
 batch = ['max']
 sensattr = ['sex']
 ages = [(71, 75)]
 # ================================
 # ====== Privacy parameters ======
-privacy_in = [['encoder_classifier'], ['encoder_classifier', 'adversary'], []]
+privacy_in = [[]]#[['encoder_classifier'], ['encoder_classifier', 'adversary'], []]
 eps = [1, 3, 10, 30]
 max_grad_norm = [10]
 # ================================
@@ -57,10 +58,15 @@ eval_step_fair = [10]
 grad_clip_ae = [10]
 grad_clip_adv = [10]
 grad_clip_class = [10]
+enc_class_sch = ['PolynomialLR']
+adv_sch = ['PolynomialLR']
+enc_class_sch_pow = [2]
+adv_sch_pow = [2]
 optimizer_enc_class = ['NAdam']
 optimizer_adv = ['NAdam']
 lr_enc_class = [0.14]
 lr_adv = [0.14]
+eval_model = ['LR']
 # ================================
 
 all_exp = list(
@@ -88,8 +94,8 @@ param_names = [
     'arch', 'edepth', 'ewidths', 'adepth', 'awidths', 'cdepth', 'cwidths', 'zdim', 'activ_ae', 'activ_adv',
     'activ_class', 'e_activ_ae', 'e_activ_adv', 'e_activ_class', 'classweight', 'aeweight', 'advweight', 'xavier',
     'dataset', 'batch', 'sensattr', 'ages', 'privacy_in', 'eps', 'max_grad_norm', 'epoch', 'adv_on_batch',
-    'eval_step_fair', 'grad_clip_ae', 'grad_clip_adv', 'grad_clip_class',
-    'optimizer_enc_class', 'optimizer_adv', 'lr_enc_class', 'lr_adv'
+    'eval_step_fair', 'grad_clip_ae', 'grad_clip_adv', 'grad_clip_class', 'optimizer_enc_class', 'optimizer_adv',
+    'lr_enc_class', 'lr_adv', 'enc_class_sch', 'adv_sch', 'enc_class_sch_pow', 'adv_sch_pow'
 ]
 
 if random_seed:
@@ -112,7 +118,7 @@ n_threads = 0
 start_time = time.time()
 for i, (p_l, seed) in enumerate(zip((all_exp * repeats)[continue_from:], seeds[continue_from:])):
     n_threads += 1
-    command = gen_exec_str(p_l, param_names, seed, no_cuda, check_acc_fair)
+    command = gen_exec_str(p_l, param_names, seed, no_cuda, check_acc_fair, offline_mode)
     if show_py_command:
         print(command)
     if not_run:

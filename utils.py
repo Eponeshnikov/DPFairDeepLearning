@@ -6,8 +6,9 @@ from clearml import Task, Logger
 
 
 class CMLogger:
-    def __init__(self, model_name, dataset_name):
-        #Task.set_offline(offline_mode=True)
+    def __init__(self, model_name, dataset_name, offline=False):
+        if offline:
+            Task.set_offline(offline_mode=True)
         self.task = Task.init(project_name='AI Fairness',
                               task_name=f'{model_name}_{dataset_name}_{time.time()}')
 
@@ -49,7 +50,7 @@ def gen_dataclasses(args_dict, name_and_args_dict):
     return result
 
 
-def gen_exec_str(param_list, param_names_, seed_, no_cuda_, check_acc_fair_, python3=False):
+def gen_exec_str(param_list, param_names_, seed_, no_cuda_, check_acc_fair_, offline_mode_, python3=False):
     exec_str = 'python3 ' if python3 else 'python '
     exec_str += 'run_training.py'
     for p, n in zip(param_list, param_names_):
@@ -68,4 +69,6 @@ def gen_exec_str(param_list, param_names_, seed_, no_cuda_, check_acc_fair_, pyt
         exec_str += f' --no_cuda'
     if check_acc_fair_:
         exec_str += f' --check_acc_fair'
+    if offline_mode_:
+        exec_str += f' --offline_mode'
     return exec_str
