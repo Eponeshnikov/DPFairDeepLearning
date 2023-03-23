@@ -24,6 +24,7 @@ def str2optimizer(stropt):
         raise Exception('Only RMSprop and NAdam supported')
     return optimizer
 
+
 def str2scheduler(opt, epoch, scheduler):
     if scheduler[0] == 'PolynomialLR':
         return PolynomialLR(opt, total_iters=epoch, power=scheduler[1])
@@ -32,11 +33,14 @@ def str2scheduler(opt, epoch, scheduler):
     else:
         raise Exception('Only ConstantLR and PolynomialLR supported')
 
+
 def str2eval_model(streval_model):
     if streval_model == 'LR':
         return LogisticRegression(max_iter=1000)
     else:
         raise Exception('Only LogisticRegression (LR) supported')
+
+
 class Trainer:
     def __init__(self, model, data, trainer_args, privacy_args):
         """Trainer for adversarial fair representation"""
@@ -121,7 +125,7 @@ class Trainer:
         adv_error = self.model.get_adv_loss(pred_a, sentive_feature)
 
         # Compute the overall loss and take a negative gradient for the adversary
-        error = self.model.advweight*adv_error  # -self.model.get_loss(rec_error, cl_error, adv_error, label_y)
+        error = self.model.advweight * adv_error  # -self.model.get_loss(rec_error, cl_error, adv_error, label_y)
         error.backward()
         grad_norms = [self.get_grad_norm(i) for i in ['encoder', 'classifier', 'adversary']]
         self.logger.log_metric("Gradient norms", "Encoder", grad_norms[0], self.step)
@@ -207,9 +211,9 @@ class Trainer:
         torch.autograd.set_detect_anomaly(True)
         for n_batch, (train_x, label_y, sensitive_a) in enumerate(self.train_data):
             self.step += 1
-            train_data = train_x#.to(self.device)
-            label_y = label_y#.to(self.device)
-            sensitive_a = sensitive_a#.to(self.device)
+            train_data = train_x  # .to(self.device)
+            label_y = label_y  # .to(self.device)
+            sensitive_a = sensitive_a  # .to(self.device)
             self.model.classifier.train()
             self.model.autoencoder.train()
             self.model.adversary.train()
@@ -288,9 +292,9 @@ class Trainer:
         self.model.adversary.eval()
         with torch.no_grad():
             for n_batch, (test_x, label_y, sensitive_a) in enumerate(self.test_data):
-                test_x = test_x#.to(self.device)
-                label_y = label_y#.to(self.device)
-                sensitive_a = sensitive_a#.to(self.device)
+                test_x = test_x  # .to(self.device)
+                label_y = label_y  # .to(self.device)
+                sensitive_a = sensitive_a  # .to(self.device)
                 # compute reconstruction and latent space
                 reconstructed, z = self.model.autoencoder(test_x)
 
@@ -401,7 +405,7 @@ class Trainer:
 
         if self.device_name == 'cuda':
             torch.cuda.empty_cache()
-        #self.logger.task.close()
+        # self.logger.task.close()
         time.sleep(5)
         return results[self.name + ' test'][4], results[self.name + ' test'][5], results[self.name + ' test'][6]
 

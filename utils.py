@@ -1,6 +1,6 @@
 import time
 import torch
-from collections import namedtuple
+import collections
 from dataclasses import make_dataclass
 from clearml import Task, Logger
 
@@ -72,3 +72,25 @@ def gen_exec_str(param_list, param_names_, seed_, no_cuda_, check_acc_fair_, off
     if offline_mode_:
         exec_str += f' --offline_mode'
     return exec_str
+
+
+def filter_by_cond(cond_, experiments):
+    cond_ = collections.OrderedDict(sorted(cond_.items()))
+    cond_zip = list(zip(*[cond_[i] for i in sorted(cond_.keys())]))
+    tmp = []
+    for condition in cond_zip:
+        # get the index of the first element in the condition
+        # compare the elements in i starting from the correct index
+        filtered = [i for i in experiments if all([i[j] == condition[num] for num, j in enumerate(cond_)])]
+        for f in filtered:
+            if f not in tmp:
+                tmp.append(f)
+    return tmp
+
+
+def filter_by_conds(conds_, experiments):
+    result = []
+    for cond_ in conds_:
+        result = filter_by_cond(cond_, experiments)
+        experiments = result.copy()
+    return result
