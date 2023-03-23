@@ -168,6 +168,7 @@ def main():
                 print(f'Accuracy: {round(acc, 2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)} no checking')
                 break
             trainer_args.seed += 1
+            laftr_model_args.seed += 1
             if any([acc <= 0.5, not np.isclose(dp, 0, atol=0.01), not np.isclose(eod, 0, atol=0.01)]):
                 print(f'Wrongly trained, retry. Accuracy: {round(acc, 2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)}')
                 try:
