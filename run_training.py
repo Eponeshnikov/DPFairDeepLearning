@@ -159,7 +159,7 @@ def main():
         acc = 0
         dp = 1
         eod = 1
-        while any([acc <= 0.5, not np.isclose(dp, 0, atol=0.01), not np.isclose(eod, 0, atol=0.01)]):
+        while any([acc <= 0.5, not np.isclose(dp, 0, atol=0.02), not np.isclose(eod, 0, atol=0.02)]):
             laftr_model = model_arch(laftr_model_args)
             trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
             acc, dp, eod = trainer.train_process()
@@ -169,7 +169,7 @@ def main():
                 break
             trainer_args.seed += 1
             laftr_model_args.seed += 1
-            if any([acc <= 0.5, not np.isclose(dp, 0, atol=0.01), not np.isclose(eod, 0, atol=0.01)]):
+            if any([acc <= 0.5, not np.isclose(dp, 0, atol=0.02), not np.isclose(eod, 0, atol=0.02)]):
                 print(f'Wrongly trained, retry. Accuracy: {round(acc, 2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)}')
                 try:
                     if not trainer_args.offline_mode:

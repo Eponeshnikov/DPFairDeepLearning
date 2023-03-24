@@ -8,13 +8,13 @@ from threading import Thread
 import time
 
 # ====== Running parameters ======
-parallel_threads = 2
+parallel_threads = 3
 repeats = 1
 random_seed = True
 no_cuda = False
 check_acc_fair = True
 show_py_command = False
-not_run = False
+not_run = True
 continue_from = 0
 test_mode = 0  # 16, 34
 offline_mode = False  # Not works with check_acc_fair if condition pass
@@ -41,7 +41,7 @@ xavier = [True]  # 17
 # ================================
 # ====== Dataset parameters ======
 data_dir = 'dataset'
-dataset = ['Adult', 'German']  # 18
+dataset = ['German', 'Adult']  # 18
 batch = ['max']  # 19
 sensattr = ['sex']  # 20
 ages = [(71, 75)]  # 21
@@ -64,11 +64,11 @@ lr_enc_class = [0.14]  # 33
 lr_adv = [0.14]  # 34
 enc_class_sch = ['PolynomialLR']  # 35
 adv_sch = ['PolynomialLR']  # 36
-enc_class_sch_pow = [2]  # 37
-adv_sch_pow = [2]  # 38
+enc_class_sch_pow = [1, 2]  # 37
+adv_sch_pow = [1, 2]  # 38
 eval_model = ['LR']  # 39
 # ========== Link params =========
-conds = [{4: awidths, 3: adepth}]
+conds = [{4: awidths, 3: adepth}, {18: dataset, 37: enc_class_sch_pow, 38: adv_sch_pow}]
 # ================================
 
 all_exp = list(
