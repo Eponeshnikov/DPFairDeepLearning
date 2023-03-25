@@ -54,8 +54,11 @@ def gen_exec_str(param_list, param_names_, seed_, no_cuda_, check_acc_fair_, off
     exec_str = 'python3 ' if python3 else 'python '
     exec_str += 'run_training.py'
     for p, n in zip(param_list, param_names_):
-        if n == 'xavier' and p:
-            exec_str += f' --{n}'
+        if n == 'xavier':
+            if p:
+                exec_str += f' --{n}'
+            else:
+                pass
         elif n == 'privacy_in':
             for i in p:
                 exec_str += f' --{n} {i}'
