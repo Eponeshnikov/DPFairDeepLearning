@@ -3,15 +3,25 @@ import torch
 import collections
 from dataclasses import make_dataclass
 from clearml import Task, Logger
+import configparser
+import json
 
 
 class CMLogger:
-    def __init__(self, model_name, dataset_name, offline=False):
+    def __init__(self, model_name, dataset_name, credentials, offline=False):
         if offline:
             Task.set_offline(offline_mode=True)
+        api_server, web_server, files_server, access_key, secret_key = get_credentials(credentials[0], credentials[1])
+        if api_server is not None:
+            Task.set_credentials(
+                api_host=api_server, web_host=web_server, files_host=files_server,
+                key=access_key, secret=secret_key
+             )
+        else:
+            print('Use default clearml.conf')
         self.task = Task.init(project_name='AI Fairness',
                               task_name=f'{model_name}_{dataset_name}_{time.time()}')
-
+        self.task.set_archived(archive=False)
         self.user_prop_dict = {"arch": model_name, "dataset": dataset_name}
         self.task.set_parameters_as_dict(self.user_prop_dict)
         self.params_dictionary = {}
@@ -23,6 +33,26 @@ class CMLogger:
 
     def add_params(self, params):
         self.task.set_parameters_as_dict(params)
+
+
+def get_credentials(dir_, file):
+    if file != 'None':
+        config = configparser.ConfigParser()
+        config.read(f'{dir_}/{file}.conf')
+
+        # Get the values of the different settings
+        api_server = config.get('settings', 'api_server')
+        web_server = config.get('settings', 'web_server')
+        files_server = config.get('settings', 'files_server')
+
+        # Parse the credentials JSON string
+        credentials_json = config.get('settings', 'credentials')
+        credentials = json.loads(credentials_json)
+        access_key = credentials['access_key']
+        secret_key = credentials['secret_key']
+        return api_server, web_server, files_server, access_key, secret_key
+    else:
+        return None, None, None, None, None
 
 
 def train_test_split(X, y, S, test_size=0.3):
@@ -83,7 +113,7 @@ def filter_by_cond(cond_, experiments):
     tmp = []
     for condition in cond_zip:
         # get the index of the first element in the condition
-        # compare the elements in i starting from the correct index
+        # compare the elements in "i" starting from the correct index
         filtered = [i for i in experiments if all([i[j] == condition[num] for num, j in enumerate(cond_)])]
         for f in filtered:
             if f not in tmp:

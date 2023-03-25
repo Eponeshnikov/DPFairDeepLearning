@@ -13,11 +13,17 @@ repeats = 1
 random_seed = True
 no_cuda = False
 check_acc_fair = True
+check_acc_fair_attempts = [5]  # 40
+acc_tresh = [0.5]  # 44
+dp_atol = [0.02]  # 45
+eod_atol = [0.02]  # 45
 show_py_command = False
 not_run = False
 continue_from = 0
-test_mode = 0  # 16, 34
-offline_mode = False  # Not works with check_acc_fair if condition pass
+test_mode = 0  # |~(16, 34)~|
+offline_mode = False  # !!!Not works with check_acc_fair if condition pass!!!
+config_dir = ['configs']  # 42
+server = ['remote_server']  # 43
 # ================================
 # ======= Model parameters =======
 arch = ['DP', 'EOD']  # 0
@@ -40,8 +46,8 @@ advweight = [1]  # 16
 xavier = [True]  # 17
 # ================================
 # ====== Dataset parameters ======
-data_dir = 'dataset'
-dataset = ['German', 'Adult']  # 18
+data_dir = ['dataset']  # 41
+dataset = ['Adult', 'German']  # 18
 batch = ['max']  # 19
 sensattr = ['sex']  # 20
 ages = [(71, 75)]  # 21
@@ -52,7 +58,7 @@ eps = [1, 3, 10, 30]  # 23
 max_grad_norm = [10]  # 24
 # ================================
 # ====== Training parameters =====
-epoch = [250]  # 25
+epoch = [250, 500]  # 25
 adv_on_batch = [1]  # 26
 eval_step_fair = [10]  # 27
 grad_clip_ae = [10]  # 28
@@ -60,15 +66,16 @@ grad_clip_adv = [10]  # 29
 grad_clip_class = [10]  # 30
 optimizer_enc_class = ['NAdam']  # 31
 optimizer_adv = ['NAdam']  # 32
-lr_enc_class = [0.14]  # 33
-lr_adv = [0.14]  # 34
+lr_enc_class = [0.14, 0.1]  # 33
+lr_adv = [0.14, 0.1]  # 34
 enc_class_sch = ['PolynomialLR']  # 35
 adv_sch = ['PolynomialLR']  # 36
-enc_class_sch_pow = [1, 2]  # 37
-adv_sch_pow = [1, 2]  # 38
+enc_class_sch_pow = [2, 1]  # 37
+adv_sch_pow = [2, 1]  # 38
 eval_model = ['LR']  # 39
 # ========== Link params =========
-conds = [{4: awidths, 3: adepth}, {18: dataset, 37: enc_class_sch_pow, 38: adv_sch_pow}]
+conds = [{4: awidths, 3: adepth, 33: lr_enc_class, 34: lr_adv},
+         {18: dataset, 37: enc_class_sch_pow, 38: adv_sch_pow, 25: epoch}]
 # ================================
 
 all_exp = list(
@@ -77,7 +84,8 @@ all_exp = list(
         e_activ_adv, e_activ_class, classweight, aeweight, advweight, xavier, dataset, batch, sensattr, ages,
         privacy_in, eps, max_grad_norm, epoch, adv_on_batch, eval_step_fair, grad_clip_ae, grad_clip_adv,
         grad_clip_class, optimizer_enc_class, optimizer_adv, lr_enc_class, lr_adv, enc_class_sch, adv_sch,
-        enc_class_sch_pow, adv_sch_pow, eval_model
+        enc_class_sch_pow, adv_sch_pow, eval_model, check_acc_fair_attempts, data_dir, config_dir, server,
+        acc_tresh, dp_atol, eod_atol
     )
 )
 
@@ -103,7 +111,8 @@ param_names = [
     'activ_class', 'e_activ_ae', 'e_activ_adv', 'e_activ_class', 'classweight', 'aeweight', 'advweight', 'xavier',
     'dataset', 'batch', 'sensattr', 'ages', 'privacy_in', 'eps', 'max_grad_norm', 'epoch', 'adv_on_batch',
     'eval_step_fair', 'grad_clip_ae', 'grad_clip_adv', 'grad_clip_class', 'optimizer_enc_class', 'optimizer_adv',
-    'lr_enc_class', 'lr_adv', 'enc_class_sch', 'adv_sch', 'enc_class_sch_pow', 'adv_sch_pow', 'eval_model'
+    'lr_enc_class', 'lr_adv', 'enc_class_sch', 'adv_sch', 'enc_class_sch_pow', 'adv_sch_pow', 'eval_model',
+    'check_acc_fair_attempts', 'data_dir', 'config_dir', 'server', 'acc_tresh', 'dp_atol', 'eod_atol'
 ]
 
 if random_seed:
@@ -115,10 +124,11 @@ print(f'Total number of experiments: {len((all_exp * repeats)[continue_from:])}'
 
 # ======= Download datasets ======
 for ds in dataset:
-    dataset_args_ = make_dataclass('dataset_args', ['dataset', 'data_dir', 'only_download_data'])
-    dataset_args = dataset_args_(ds, data_dir, True)
-    d = Dataset(dataset_args)
-    d.download_data()
+    for data_dir_ in data_dir:
+        dataset_args_ = make_dataclass('dataset_args', ['dataset', 'data_dir', 'only_download_data'])
+        dataset_args = dataset_args_(ds, data_dir_, True)
+        d = Dataset(dataset_args)
+        d.download_data()
 # ================================
 
 thread_list = []
