@@ -181,11 +181,6 @@ def main():
             trainer = Trainer(laftr_model, (train_dataloader, test_dataloader), trainer_args, privacy_args)
             acc, dp, eod = trainer.train_process()
             attempt += 1
-            if attempt == trainer_args.check_acc_fair_attempts:
-                trainer.logger.task.mark_failed()
-                trainer.logger.task.close()
-                print(f'Attempts ended. Accuracy: {round(acc, 2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)}')
-                break
             if not trainer_args.check_acc_fair:
                 print(f'Accuracy: {round(acc, 2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)} no checking')
                 break
@@ -194,6 +189,11 @@ def main():
             if any([acc <= trainer_args.acc_tresh,
                    not np.isclose(dp, 0, atol=trainer_args.dp_atol),
                    not np.isclose(eod, 0, atol=trainer_args.eod_atol)]):
+                if attempt == trainer_args.check_acc_fair_attempts:
+                    trainer.logger.task.mark_failed()
+                    trainer.logger.task.close()
+                    print(f'Attempts ended. Accuracy: {round(acc, 2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)}')
+                    break
                 print(f'Wrongly trained, retry. Accuracy: {round(acc, 2)}, DP: {round(dp, 3)}, EOD: {round(eod, 3)}')
                 try:
                     if not trainer_args.offline_mode:
