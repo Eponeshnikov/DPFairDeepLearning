@@ -81,8 +81,7 @@ class Trainer:
 
         self.logger = CMLogger(self.name, trainer_args.dataset, (trainer_args.config_dir, trainer_args.server),
                                trainer_args.offline_mode)
-        self.logger.task.add_tags(trainer_args.dataset)
-        tags = [self.name, trainer_args.sensattr]
+        tags = [self.name, trainer_args.dataset, trainer_args.sensattr]
         self.logger.task.add_tags(tags)
 
         X_test = self.test_data.dataset.X.cpu().detach().numpy()
