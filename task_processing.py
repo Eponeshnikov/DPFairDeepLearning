@@ -104,9 +104,9 @@ def remote2local(tasks):
     return local_tasks
 
 
-def save_tasks(tasks_list):
+def save_tasks(tasks_list, add_imported_tag=False):
     for task in tqdm(tasks_list):
-        save_dir = 'saved_tasks/'
+        save_dir = '../saved_tasks/'
         task_ = task
         if not isinstance(task, type(LocalTask(None))):
             task_ = LocalTask(task_)
@@ -114,10 +114,24 @@ def save_tasks(tasks_list):
             save_dir += 'archived/'
         else:
             save_dir += 'current/'
+        save_dir += task_.data_dict['name']
         save_dir += task_.data_dict['id']
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         for element in [(task_.params, 'params'), (task_.scalars, 'scalars'), (task_.data_dict, 'data_dict')]:
             el_name = element[1]
+            file = element[0]
             with open(f"{save_dir}/{el_name}.pkl", 'wb') as f:
-                pickle.dump(element[0], f)
+                if el_name == 'data_dict' and add_imported_tag:
+                    file['system_tags'] += ['imported']
+                pickle.dump(file, f)
+
+
+def read_local_pkl(path):
+    with open(os.path.join(path, 'scalars.pkl'), 'rb') as f:
+        scalars = pickle.load(f)
+    with open(os.path.join(path, 'params.pkl'), 'rb') as f:
+        params = pickle.load(f)
+    with open(os.path.join(path, 'data_dict.pkl'), 'rb') as f:
+        data_dict = pickle.load(f)
+    return data_dict, params, scalars
