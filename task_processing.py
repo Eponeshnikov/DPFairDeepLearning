@@ -275,7 +275,7 @@ def plot_no_privacy_unfair(ax,
                            archs: List[str],
                            awidths: List[int],
                            eps: List[float],
-                           max_val: float) -> None:
+                           max_val: float):
     # Set x values and spacing
     x = np.arange(len(eps)) * 2.5
     ddx = x[1] - x[0]
@@ -301,6 +301,7 @@ def plot_no_privacy_unfair(ax,
     ax.set_xlabel('ε')
     ax.set_ylabel(metrics)
     ax.set_title(f'{dataset} dataset. Dependence of {metrics} on ε.')
+    return plot_dict_no_privacy, mean_unfair
 
 
 # Define function to plot eps bars
@@ -334,4 +335,4 @@ def plot_eps_bars(ax,
     ax.set_xlabel('ε')
     ax.set_ylabel(metrics)
     ax.set_title(f'{dataset} dataset. Dependence of {metrics} on ε.')
-    return max_val
+    return plot_dict, max_val
