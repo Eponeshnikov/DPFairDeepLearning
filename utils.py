@@ -19,6 +19,7 @@ class CMLogger:
              )
         else:
             print('Use default clearml.conf')
+        Task.ignore_requirements('pywin32')
         self.task = Task.init(project_name='AI Fairness',
                               task_name=f'{model_name}_{dataset_name}_{time.time()}')
         self.task.set_archived(archive=False)
