@@ -5,6 +5,9 @@ import pickle
 import os
 from typing import Dict, List, Tuple
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.stats as stats
 
 
 class LocalTask:
@@ -172,7 +175,8 @@ def add_no_privacy_bars(dataset: str,
                         metrics: str,
                         privacy_ins: str,
                         archs: List[str],
-                        awidths: List[int]):
+                        awidths: List[int],
+                        scalar='Model test'):
     plot_dict_no_privacy: Dict[str, List[float]] = dict()
     max_val = 0
     # Loop through each architecture and associated width
@@ -187,7 +191,7 @@ def add_no_privacy_bars(dataset: str,
                     'privacy_in': '',
                     'awidths': awidth}
             filtered_tasks_no_privacy_val = pipeline_no_privacy.filter_by_args(args).extract_scalar_values(
-                [metrics, 'Model test', 'y', -1]).run()
+                [metrics, scalar, 'y', -1]).run()
 
             # Calculate the mean and standard deviation of filtered values
             mean_no_privacy = np.mean(filtered_tasks_no_privacy_val)
@@ -205,7 +209,8 @@ def add_no_privacy_bars(dataset: str,
 # Define function to add unfair plot
 def add_unfair_plot(dataset: str,
                     task_list: List[str],
-                    metrics: str) -> float:
+                    metrics: str,
+                    scalar='Unfair test') -> float:
     pipeline_unfair = TaskListPipeline(task_list)
 
     # Filter pipeline with dataset argument and take first value
@@ -213,7 +218,7 @@ def add_unfair_plot(dataset: str,
 
     # Extract scalar values for unfair test
     mean_unfair = TaskListPipeline([filtered_task_unfair]).extract_scalar_values(
-        [metrics, 'Unfair test', 'y', -1]).run()
+        [metrics, scalar, 'y', -1]).run()
 
     # Return the mean result
     return mean_unfair
@@ -226,7 +231,8 @@ def add_eps_bars(dataset: str,
                  privacy_ins: str,
                  archs: List[str],
                  awidths: List[int],
-                 eps: List[float]):
+                 eps: List[float],
+                 scalar='Model test'):
     plot_dict: Dict[str, List[float]] = dict()
     max_val = 0
 
@@ -249,7 +255,7 @@ def add_eps_bars(dataset: str,
                 # Create a pipeline of the filtered tasks and filter by epsilon values
                 eps_pipe = TaskListPipeline(filtered_tasks)
                 eps_tasks_vals = eps_pipe.filter_by_args(*[{'eps': i} for i in eps]).extract_scalar_values(
-                    [metrics, 'Model test', 'y', -1]).run()
+                    [metrics, scalar, 'y', -1]).run()
 
                 # Divide the list of epsilon values into sublists
                 sub_lists = [eps_tasks_vals[
@@ -275,19 +281,22 @@ def plot_no_privacy_unfair(ax,
                            archs: List[str],
                            awidths: List[int],
                            eps: List[float],
-                           max_val: float):
+                           max_val: float,
+                           scalar='Model test',
+                           scalar_unfair='Unfair test'):
     # Set x values and spacing
     x = np.arange(len(eps)) * 2.5
     ddx = x[1] - x[0]
 
     # Add bars without privacy
-    plot_dict_no_privacy, tmp_max_val = add_no_privacy_bars(dataset, task_list, metrics, privacy_ins, archs, awidths)
+    plot_dict_no_privacy, tmp_max_val = add_no_privacy_bars(dataset, task_list, metrics, privacy_ins,
+                                                            archs, awidths, scalar=scalar)
     x_shift_no_pr, _ = map_sequence(len(plot_dict_no_privacy))
     [ax.bar(x[0] - ddx + x_shift_no_pr[i], k[1][0], yerr=k[1][1], label=k[0], width=_, alpha=0.5) for i, k in
      enumerate(plot_dict_no_privacy.items())]
 
     # Add unfair values
-    mean_unfair = add_unfair_plot(dataset, task_list, metrics)
+    mean_unfair = add_unfair_plot(dataset, task_list, metrics, scalar=scalar_unfair)
     ax.plot(np.array(
         [np.min(np.hstack([x[0] - ddx, x])) + np.min(x_shift_no_pr) - _ / 2,
          np.max(np.hstack([x[0] - ddx, x])) + np.max(x_shift_no_pr) + _ / 2]),
@@ -299,6 +308,7 @@ def plot_no_privacy_unfair(ax,
     max_val = np.max([max_val, mean_unfair[0], tmp_max_val])
     ax.set_ylim(0, max_val * 1.05)
     ax.set_xlabel('ε')
+    metrics = metrics if scalar == 'Model test' else f'Acc/Fair Δ{scalar}'
     ax.set_ylabel(metrics)
     ax.set_title(f'{dataset} dataset. Dependence of {metrics} on ε.')
     return plot_dict_no_privacy, mean_unfair
@@ -312,9 +322,10 @@ def plot_eps_bars(ax,
                   privacy_ins: str,
                   archs: List[str],
                   awidths: List[int],
-                  eps: List[float]):
+                  eps: List[float],
+                  scalar='Model test'):
     # Add bars with privacy
-    plot_dict, max_val = add_eps_bars(dataset, task_list, metrics, privacy_ins, archs, awidths, eps)
+    plot_dict, max_val = add_eps_bars(dataset, task_list, metrics, privacy_ins, archs, awidths, eps, scalar=scalar)
 
     # Set x values and spacing
     x = np.arange(len(eps)) * 2.5
@@ -336,3 +347,49 @@ def plot_eps_bars(ax,
     ax.set_ylabel(metrics)
     ax.set_title(f'{dataset} dataset. Dependence of {metrics} on ε.')
     return plot_dict, max_val
+
+
+def convert_plot_dict(d, eps, mode='eps', repeat=10):
+    dict_ = {'Name': [], 'Vals': []}
+    if mode == 'eps':
+        for k, v in d.items():
+            for e_, e in zip(eps, v[2]):
+                dict_['Name'].append(f"{k}|eps = {e_}")
+                dict_['Vals'].append(e)
+        return pd.DataFrame.from_dict(dict_)
+    if mode == 'no_pr':
+        for k, v in d.items():
+            dict_['Name'].append(k)
+            dict_['Vals'].append(v[2])
+        return pd.DataFrame.from_dict(dict_)
+    if mode == 'unfair':
+        dict_['Name'].append('Unfair|No privacy')
+        dict_['Vals'].append(np.repeat(d[0], repeat))
+        return pd.DataFrame.from_dict(dict_)
+
+
+def plot_ttest_matrix(res, dataset, metric, scalar='Model test', p_val=0.05):
+    t = np.zeros((len(res), len(res)))
+    for i in res.iterrows():
+        for j in res.iterrows():
+            vars_ = [np.var(i[1]['Vals']), np.var(j[1]['Vals'])]
+            means = [np.mean(i[1]['Vals']), np.mean(j[1]['Vals'])]
+            p_v = stats.ttest_ind(i[1]['Vals'], j[1]['Vals'], equal_var=not np.max(vars_) / np.min(vars_) > 4)[1]
+            if p_v < p_val:
+                if means[0] > means[1]:
+                    t[i[0]][j[0]] = 1
+                else:
+                    t[i[0]][j[0]] = -1
+            else:
+                t[i[0]][j[0]] = 0
+    f = plt.figure(figsize=(13, 13))
+    ax = f.add_subplot(111)
+    metric = metric if scalar == 'Model test' else f'Acc/Fair Δ{scalar}'
+    ax.set_title(f'{dataset} dataset. {metric}.')
+    a = ax.matshow(t)
+    ax.xaxis.grid(True, color="black")
+    ax.yaxis.grid(True, color="black")
+    ax.set_xticks(np.arange(len(res['Name'])))
+    ax.set_yticks(np.arange(len(res['Name'])))
+    ax.set_xticklabels(res['Name'], rotation=90)
+    ax.set_yticklabels(res['Name'])

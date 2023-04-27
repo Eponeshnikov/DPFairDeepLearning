@@ -8,12 +8,12 @@ from threading import Thread
 import time
 
 # ====== Running parameters ======
-parallel_threads = 3
-repeats = 1
+parallel_threads = 4
+repeats = 2
 random_seed = True
 no_cuda = False
 check_acc_fair = True
-check_acc_fair_attempts = [5]  # 40
+check_acc_fair_attempts = [20]  # 40
 acc_tresh = [0.5]  # 44
 dp_atol = [0.02]  # 45
 eod_atol = [0.02]  # 45
@@ -23,7 +23,7 @@ continue_from = 0
 test_mode = 0  # |~(16, 34)~|
 offline_mode = False  # !!!Not works with check_acc_fair if condition pass!!!
 config_dir = ['configs']  # 42
-server = ['remote_server']  # 43
+server = ['local_server']  # 43
 # ================================
 # ======= Model parameters =======
 arch = ['DP', 'EOD']  # 0
@@ -47,7 +47,7 @@ xavier = [True]  # 17
 # ================================
 # ====== Dataset parameters ======
 data_dir = ['dataset']  # 41
-dataset = ['Adult', 'German']  # 18
+dataset = ['German']  # 18
 batch = ['max']  # 19
 sensattr = ['sex']  # 20
 ages = [(71, 75)]  # 21
@@ -58,7 +58,7 @@ eps = [1, 3, 10, 30]  # 23
 max_grad_norm = [10]  # 24
 # ================================
 # ====== Training parameters =====
-epoch = [250, 500]  # 25
+epoch = [500]  # 25
 adv_on_batch = [1]  # 26
 eval_step_fair = [10]  # 27
 grad_clip_ae = [10]  # 28
@@ -66,16 +66,16 @@ grad_clip_adv = [10]  # 29
 grad_clip_class = [10]  # 30
 optimizer_enc_class = ['NAdam']  # 31
 optimizer_adv = ['NAdam']  # 32
-lr_enc_class = [0.14, 0.1]  # 33
-lr_adv = [0.14, 0.1]  # 34
+lr_enc_class = [0.14, 0.12]  # 33
+lr_adv = [0.14, 0.12]  # 34
 enc_class_sch = ['PolynomialLR']  # 35
 adv_sch = ['PolynomialLR']  # 36
-enc_class_sch_pow = [2, 1]  # 37
-adv_sch_pow = [2, 1]  # 38
+enc_class_sch_pow = [1]  # 37
+adv_sch_pow = [1]  # 38
 eval_model = ['LR']  # 39
 # ========== Link params =========
 conds = [{4: awidths, 3: adepth, 33: lr_enc_class, 34: lr_adv},
-         {18: dataset, 37: enc_class_sch_pow, 38: adv_sch_pow, 25: epoch}]
+         {18: dataset, 25: epoch}]
 # ================================
 
 all_exp = list(
