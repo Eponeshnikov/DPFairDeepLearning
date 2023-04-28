@@ -14,11 +14,17 @@ def get_parser():
     parser.add_argument("--data_dir", default="dataset",
                         help="Directory for dataset (default: dataset)")
     parser.add_argument("--sensattr", type=str, default="sex",
-                        help="Sensitive attribute (default: sex)")
+                        help="Sensitive attribute (German dataset - 'sex'; Adult dataset - 'sex', 'age');"
+                             " CelebA dataset - 'Bangs', 'Eyeglasses', 'No_Beard', 'Smiling', 'Young'"
+                             " (default: sex)")
+    parser.add_argument("--predattr", type=str, default="income_>50K",
+                        help="Predict attribute (German dataset - 'Risk_good'; Adult dataset - 'income_>50K';"
+                             " CelebA dataset - 'Bangs', 'Eyeglasses', 'No_Beard', 'Smiling', 'Young')"
+                             " (default: income_>50K)")
     parser.add_argument("--age_low", type=int, default=10,
-                        help="Low bound of age value if sensattr is age (default: 10)")
+                        help="Low bound of age value if sensattr is 'age'; Only for Adult dataset (default: 10)")
     parser.add_argument("--age_high", type=int, default=65,
-                        help="High bound of age value if sensattr is age (default: 65)")
+                        help="High bound of age value if sensattr is 'age'; Only for Adult dataset (default: 65)")
     parser.add_argument("--batch", default=1024,
                         help="Batch size (default: 1024); set 'max' for using all data in one batch")
     parser.add_argument("--only_download_data", default=False, action="store_true",
@@ -142,7 +148,7 @@ def main():
                                'no_cuda', 'seed'],
                           "dataset_args":
                               ['dataset', 'data_dir', 'batch', 'age_low', 'age_high', 'sensattr', 'only_download_data',
-                               'seed'],
+                               'seed', 'predattr'],
                           "privacy_args":
                               ['privacy_in', 'delta', 'eps', 'max_grad_norm'],
                           "trainer_args":
@@ -150,7 +156,8 @@ def main():
                                'grad_clip_adv', 'grad_clip_class', 'sensattr', 'optimizer_enc_class', 'optimizer_adv',
                                'lr_enc_class', 'lr_adv', 'check_acc_fair', 'enc_class_sch', 'adv_sch',
                                'enc_class_sch_pow', 'adv_sch_pow', 'eval_model', 'offline_mode',
-                               'check_acc_fair_attempts', 'config_dir', 'server', 'acc_tresh', 'dp_atol', 'eod_atol']
+                               'check_acc_fair_attempts', 'config_dir', 'server', 'acc_tresh', 'dp_atol', 'eod_atol',
+                               'predattr']
                           }
 
     laftr_model_args, dataset_args, privacy_args, trainer_args = \

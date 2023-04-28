@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
+import json
+from sentence_transformers import SentenceTransformer
 from sklearn.model_selection import train_test_split
 
 
-def preprocessing_adult(path, use_age=False, age_val=(10, 65), test_size=0.3, seed=0):
+def preprocessing_adult(path, predattr='income_>50K', use_age=False, age_val=(10, 65), test_size=0.3, seed=0):
     def normalize(df_):
         df_.fnlwgt = (df_.fnlwgt - np.mean(df_.fnlwgt)) / np.std(df_.fnlwgt)
 
@@ -41,8 +43,8 @@ def preprocessing_adult(path, use_age=False, age_val=(10, 65), test_size=0.3, se
         # df_.to_csv('preprocessing/adult.csv')
         del df_['gender_Male']
 
-        X = df_.drop('income_>50K', axis=1).values[0:n_data, :]
-        y = df_['income_>50K'].values[0:n_data]
+        X = df_.drop(predattr, axis=1).values[0:n_data, :]
+        y = df_[predattr].values[0:n_data]
         S = S[0:n_data]
         return np.array(X), np.array(y), np.array(S)
 
@@ -80,7 +82,7 @@ def preprocessing_adult(path, use_age=False, age_val=(10, 65), test_size=0.3, se
     # feature scaling
     # apply stander scaler
 
-    #df_train, df_test = df.head(int((1 - test_size) * n_data)), df.tail(int(test_size * n_data))
+    # df_train, df_test = df.head(int((1 - test_size) * n_data)), df.tail(int(test_size * n_data))
     df_train, df_test = train_test_split(df, test_size=test_size, random_state=seed)
     del df
     df_train = normalize(df_train)
@@ -90,12 +92,12 @@ def preprocessing_adult(path, use_age=False, age_val=(10, 65), test_size=0.3, se
     return X_train, y_train, S_train, X_test, y_test, S_test
 
 
-def preprocessing_german(path, test_size=0.3, seed=1):
+def preprocessing_german(path, predattr='Risk_good', test_size=0.3, seed=1):
     """ Convert data to numeric values """
     header = 'Checkin account,Duration,Credit history,Purpose,Credit amount,Savings,Present employment,' \
              'Installment rate,Sex,Other debtors,Residence duration,Property,Age,Other installment,Housing,' \
              'Credits number,Job,Number of people,Telephone,Foreign worker,Risk'.split(',')
-    data = pd.read_csv(f'{path}/german.data', names=header,  delimiter=' ')
+    data = pd.read_csv(f'{path}/german.data', names=header, delimiter=' ')
     purposes = ['car', 'car_new', 'furniture/equipment', 'radio/TV', 'domestic appliances',
                 'repairs', 'education', 'vacation', 'retraining', 'business', 'others']
 
@@ -193,12 +195,40 @@ def preprocessing_german(path, test_size=0.3, seed=1):
 
     data_train, data_test = train_test_split(data, test_size=test_size, random_state=seed)
     S_train = np.array(data_train["Sex_male"].values)
-    S_test =  np.array(data_test["Sex_male"].values)
-    X_train = np.array(data_train.drop("Risk_good", 1).values)
-    X_test =  np.array(data_test.drop("Risk_good", 1).values)
-    y_train = np.array(data_train["Risk_good"].values)
-    y_test =  np.array(data_test["Risk_good"].values)
+    S_test = np.array(data_test["Sex_male"].values)
+    X_train = np.array(data_train.drop(predattr, 1).values)
+    X_test = np.array(data_test.drop(predattr, 1).values)
+    y_train = np.array(data_train[predattr].values)
+    y_test = np.array(data_test[predattr].values)
 
+    return X_train, y_train, S_train, X_test, y_test, S_test
+
+
+def preprocessing_celeba(path, predattr, sensattr, test_size=0.3, seed=2):
+    annotations_path = f'{path}/combined_annotation.txt'
+    captions_path = f'{path}/captions.json'
+
+    annotations_df = pd.read_csv(annotations_path, delimiter=' ')
+    captions_dict = json.load(open(captions_path))
+    captions_series = pd.Series({key: value['overall_caption'] for key, value in captions_dict.items()},
+                                name='captions')
+    merged_df = pd.merge(annotations_df, captions_series.to_frame(), left_on='img_name', right_index=True, how='left')
+
+    merged_df['Eyeglasses'] = np.where(merged_df['Eyeglasses'] != 0, 1, 0)
+    merged_df['Smiling'] = np.where(merged_df['Smiling'] != 0, 1, 0)
+    merged_df['No_Beard'] = np.where(merged_df['No_Beard'] != 0, 1, 0)
+    merged_df['Bangs'] = merged_df['Bangs'].apply(lambda x: 1 if x > 2 else 0)
+    merged_df['Young'] = merged_df['Young'].apply(lambda x: 1 if x > 2 else 0)
+
+    model = SentenceTransformer('average_word_embeddings_glove.6B.300d')
+    emb = model.encode(merged_df['captions'])
+    del model
+    merged_df['captions_vec'] = [i for i in emb]
+    train, test = train_test_split(merged_df, test_size=test_size, random_state=seed)
+    X_train, y_train, S_train = np.stack(train['captions_vec'].to_list(), axis=0), train[predattr].to_numpy(),\
+        train[sensattr].to_numpy()
+    X_test, y_test, S_test = np.stack(test['captions_vec'].to_list(), axis=0), test[predattr].to_numpy(),\
+        test[sensattr].to_numpy()
     return X_train, y_train, S_train, X_test, y_test, S_test
 
 

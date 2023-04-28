@@ -8,17 +8,17 @@ from threading import Thread
 import time
 
 # ====== Running parameters ======
-parallel_threads = 4
-repeats = 2
+parallel_threads = 3
+repeats = 1
 random_seed = True
 no_cuda = False
 check_acc_fair = True
-check_acc_fair_attempts = [20]  # 40
+check_acc_fair_attempts = [5]  # 40
 acc_tresh = [0.5]  # 44
 dp_atol = [0.02]  # 45
-eod_atol = [0.02]  # 45
-show_py_command = False
-not_run = False
+eod_atol = [0.02]  # 46
+show_py_command = True
+not_run = True
 continue_from = 0
 test_mode = 0  # |~(16, 34)~|
 offline_mode = False  # !!!Not works with check_acc_fair if condition pass!!!
@@ -47,9 +47,10 @@ xavier = [True]  # 17
 # ================================
 # ====== Dataset parameters ======
 data_dir = ['dataset']  # 41
-dataset = ['German']  # 18
-batch = ['max']  # 19
-sensattr = ['sex']  # 20
+dataset = ['Adult', 'German', 'CelebA', 'CelebA']  # 18
+batch = ['max', 'max', 40000, 40000]  # 19
+sensattr = ['sex', 'sex', 'Young', 'Eyeglasses']  # 20
+predattr = ['Risk_good', 'income_>50K', 'No_Beard', 'Young']  # 46
 ages = [(71, 75)]  # 21
 # ================================
 # ====== Privacy parameters ======
@@ -58,7 +59,7 @@ eps = [1, 3, 10, 30]  # 23
 max_grad_norm = [10]  # 24
 # ================================
 # ====== Training parameters =====
-epoch = [500]  # 25
+epoch = [250, 500, 120, 120]  # 25
 adv_on_batch = [1]  # 26
 eval_step_fair = [10]  # 27
 grad_clip_ae = [10]  # 28
@@ -66,8 +67,8 @@ grad_clip_adv = [10]  # 29
 grad_clip_class = [10]  # 30
 optimizer_enc_class = ['NAdam']  # 31
 optimizer_adv = ['NAdam']  # 32
-lr_enc_class = [0.14, 0.12]  # 33
-lr_adv = [0.14, 0.12]  # 34
+lr_enc_class = [0.14, 0.13]  # 33
+lr_adv = [0.14, 0.13]  # 34
 enc_class_sch = ['PolynomialLR']  # 35
 adv_sch = ['PolynomialLR']  # 36
 enc_class_sch_pow = [1]  # 37
@@ -75,7 +76,7 @@ adv_sch_pow = [1]  # 38
 eval_model = ['LR']  # 39
 # ========== Link params =========
 conds = [{4: awidths, 3: adepth, 33: lr_enc_class, 34: lr_adv},
-         {18: dataset, 25: epoch}]
+         {18: dataset, 25: epoch, 47: predattr, 20: sensattr, 19: batch}]
 # ================================
 
 all_exp = list(
@@ -85,7 +86,7 @@ all_exp = list(
         privacy_in, eps, max_grad_norm, epoch, adv_on_batch, eval_step_fair, grad_clip_ae, grad_clip_adv,
         grad_clip_class, optimizer_enc_class, optimizer_adv, lr_enc_class, lr_adv, enc_class_sch, adv_sch,
         enc_class_sch_pow, adv_sch_pow, eval_model, check_acc_fair_attempts, data_dir, config_dir, server,
-        acc_tresh, dp_atol, eod_atol
+        acc_tresh, dp_atol, eod_atol, predattr
     )
 )
 
@@ -112,7 +113,7 @@ param_names = [
     'dataset', 'batch', 'sensattr', 'ages', 'privacy_in', 'eps', 'max_grad_norm', 'epoch', 'adv_on_batch',
     'eval_step_fair', 'grad_clip_ae', 'grad_clip_adv', 'grad_clip_class', 'optimizer_enc_class', 'optimizer_adv',
     'lr_enc_class', 'lr_adv', 'enc_class_sch', 'adv_sch', 'enc_class_sch_pow', 'adv_sch_pow', 'eval_model',
-    'check_acc_fair_attempts', 'data_dir', 'config_dir', 'server', 'acc_tresh', 'dp_atol', 'eod_atol'
+    'check_acc_fair_attempts', 'data_dir', 'config_dir', 'server', 'acc_tresh', 'dp_atol', 'eod_atol', 'predattr'
 ]
 
 if random_seed:
