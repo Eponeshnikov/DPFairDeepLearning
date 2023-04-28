@@ -23,7 +23,7 @@ continue_from = 0
 test_mode = 0  # |~(16, 34)~|
 offline_mode = False  # !!!Not works with check_acc_fair if condition pass!!!
 config_dir = ['configs']  # 42
-server = ['local_server']  # 43
+server = [None]  # 43
 # ================================
 # ======= Model parameters =======
 arch = ['DP', 'EOD']  # 0
