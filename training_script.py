@@ -8,7 +8,7 @@ from threading import Thread
 import time
 
 # ====== Running parameters ======
-parallel_threads = 3
+parallel_threads = 1
 repeats = 1
 random_seed = True
 no_cuda = False
@@ -20,6 +20,7 @@ eod_atol = [0.02]  # 46
 show_py_command = False
 not_run = False
 continue_from = 0
+continue_to = None  # None to end of list
 test_mode = 0  # |~(16, 34)~|
 offline_mode = False  # !!!Not works with check_acc_fair if condition pass!!!
 config_dir = ['configs']  # 42
@@ -121,7 +122,9 @@ if random_seed:
 else:
     seeds = np.repeat(0, repeats * len(all_exp))
 
-print(f'Total number of experiments: {len((all_exp * repeats)[continue_from:])}')
+if continue_to is None:
+    continue_to = len(all_exp * repeats)
+print(f'Total number of experiments: {len((all_exp * repeats)[continue_from:continue_to])}')
 
 # ======= Download datasets ======
 for ds in dataset:
@@ -135,7 +138,7 @@ for ds in dataset:
 thread_list = []
 n_threads = 0
 start_time = time.time()
-for i, (p_l, seed) in enumerate(zip((all_exp * repeats)[continue_from:], seeds[continue_from:])):
+for i, (p_l, seed) in enumerate(zip((all_exp * repeats)[continue_from:continue_to], seeds[continue_from:continue_to])):
     n_threads += 1
     command = gen_exec_str(p_l, param_names, seed, no_cuda, check_acc_fair, offline_mode)
     if show_py_command:
