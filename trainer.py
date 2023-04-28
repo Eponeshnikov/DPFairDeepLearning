@@ -48,6 +48,8 @@ class Trainer:
         torch.backends.cudnn.benchmark = True
         self.device_name = model.device_name
         self.device = torch.device(self.device_name)
+        if self.device_name == 'cuda':
+            torch.cuda.empty_cache()
         self.eval_model_name = trainer_args.eval_model
         self.eval_model = str2eval_model(self.eval_model_name)
 
