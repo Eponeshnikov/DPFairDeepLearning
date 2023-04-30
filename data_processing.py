@@ -219,15 +219,16 @@ def preprocessing_celeba(path, predattr, sensattr, test_size=0.3, seed=2):
     merged_df['No_Beard'] = np.where(merged_df['No_Beard'] != 0, 1, 0)
     merged_df['Bangs'] = merged_df['Bangs'].apply(lambda x: 1 if x > 2 else 0)
     merged_df['Young'] = merged_df['Young'].apply(lambda x: 1 if x > 2 else 0)
+    merged_df = merged_df.sample(frac=0.5, random_state=seed).reset_index()
 
     model = SentenceTransformer('average_word_embeddings_glove.6B.300d')
     emb = model.encode(merged_df['captions'])
     del model
     merged_df['captions_vec'] = [i for i in emb]
     train, test = train_test_split(merged_df, test_size=test_size, random_state=seed)
-    X_train, y_train, S_train = np.stack(train['captions_vec'].to_list(), axis=0), train[predattr].to_numpy(),\
+    X_train, y_train, S_train = np.stack(train['captions_vec'].to_list(), axis=0), train[predattr].to_numpy(), \
         train[sensattr].to_numpy()
-    X_test, y_test, S_test = np.stack(test['captions_vec'].to_list(), axis=0), test[predattr].to_numpy(),\
+    X_test, y_test, S_test = np.stack(test['captions_vec'].to_list(), axis=0), test[predattr].to_numpy(), \
         test[sensattr].to_numpy()
     return X_train, y_train, S_train, X_test, y_test, S_test
 

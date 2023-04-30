@@ -91,9 +91,77 @@ class Dataset:
             X_train, X_test, y_train, y_test, S_train, S_test
 
     def download_data(self):
+        def get_download_func(url_):
+            if 'drive.google.com' in url_:
+                return gdown.download
+            else:
+                return urllib.request.urlretrieve
+
+        def download_file(file_, url_, alt_url_, download_func_, file_path_):
+            try:
+                if not os.path.isfile(file_path_):
+                    print(f'Downloading {file_} ...')
+                    download_func_(url_, file_path_)
+                    if not os.path.isfile(file_path_) and len(alt_url_) > 0:
+                        print('Cannot download, trying alt link')
+                        download_func_(alt_url_, file_path_)
+                    print('Downloaded' if os.path.isfile(file_path_) else 'Cannot download')
+                elif self.args.only_download_data:
+                    print(f'{file_} already downloaded')
+            except Exception:
+                if len(alt_url_) > 0:
+                    print('Trying alt link')
+                    download_func_(alt_url_, file_path_)
+                    print('Downloaded' if os.path.isfile(file_path_) else 'Cannot download')
+
         if not os.path.exists(self.args.data_dir):
             os.makedirs(self.args.data_dir)
-        if 'Adult' in self.args.dataset:
+
+        datasets = {
+            'Adult': [
+                (
+                    'adult.data',
+                    'https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data',
+                    self.args.alt_link_dataset.split('^')[0] if len(self.args.alt_link_dataset) > 0 else ''
+                ),
+                (
+                    'adult.test',
+                    'https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test',
+                    self.args.alt_link_dataset.split('^')[1] if len(self.args.alt_link_dataset) > 0 else ''
+                )
+            ],
+            'German': [
+                (
+                    'german.data',
+                    'https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data',
+                    self.args.alt_link_dataset.split('^')[0] if len(self.args.alt_link_dataset) > 0 else ''
+                )
+            ],
+            'CelebA': [
+                (
+                    'captions.json',
+                    'https://drive.google.com/u/0/uc?id=1ndtYb3tlopQhpBYUHpBpVPYBFbz9-kb_&export=download',
+                    self.args.alt_link_dataset.split('^')[0] if len(self.args.alt_link_dataset) > 0 else ''
+                ),
+                (
+                    'combined_annotation.txt',
+                    'https://drive.google.com/u/0/uc?id=1wZcVEjJ5LwP1Ciuc3j_RFw9Vcusj4UEU&export=download',
+                    self.args.alt_link_dataset.split('^')[1] if len(self.args.alt_link_dataset) > 0 else ''
+                )
+            ]
+        }
+
+        for dataset, files in datasets.items():
+            if self.args.dataset == dataset:
+                for file, url, alt_url in files:
+                    download_func = get_download_func(url)
+                    file_path = f'{self.args.data_dir}/{file}'
+                    download_file(file, url, alt_url, download_func, file_path)
+
+    def download_data1(self):
+        if not os.path.exists(self.args.data_dir):
+            os.makedirs(self.args.data_dir)
+        if self.args.dataset == 'Adult':
             if not os.path.isfile(f'{self.args.data_dir}/adult.data'):
                 print('Downloading adult.data ...')
                 urllib.request.urlretrieve('https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data',

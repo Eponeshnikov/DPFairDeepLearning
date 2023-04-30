@@ -76,13 +76,12 @@ class Trainer:
         self.adv_sch = str2scheduler(
             self.adversary_op, self.epoch, (trainer_args.adv_sch, trainer_args.adv_sch_pow))
 
+        self.name = model.name
+        self.logger = CMLogger(self.name, trainer_args.dataset, (trainer_args.config_dir, trainer_args.server),
+                               trainer_args.execute_remotely, trainer_args.offline_mode)
         self.train_data = data[0]
         self.test_data = data[1]
 
-        self.name = model.name
-
-        self.logger = CMLogger(self.name, trainer_args.dataset, (trainer_args.config_dir, trainer_args.server),
-                               trainer_args.offline_mode)
         tags = [self.name, trainer_args.dataset, trainer_args.sensattr]
         self.logger.task.add_tags(tags)
 

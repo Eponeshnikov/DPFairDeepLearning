@@ -11,6 +11,10 @@ def get_parser():
     parser = argparse.ArgumentParser(description="Benchmarking Differentially Private Fair Deep Learning")
     parser.add_argument("--dataset", type=str, default="Adult",
                         help="Dataset for training (default: Adult)")
+    parser.add_argument("--alt_link_dataset", type=str, default="",
+                        help="Alternative link for downloading dataset, if dataset has more than one files"
+                             "split urls using '^' (example: url1^url2), for adding alt link for only one"
+                             "file use next structure: '^url2' or 'url1^' (default: )")
     parser.add_argument("--data_dir", default="dataset",
                         help="Directory for dataset (default: dataset)")
     parser.add_argument("--sensattr", type=str, default="sex",
@@ -128,6 +132,8 @@ def get_parser():
                         help="EOD tolerance for check_acc_fair (default: 0.02)")
     parser.add_argument("--offline_mode", default=False, action="store_true",
                         help="Offline mode for ClearML (default: False)")
+    parser.add_argument("--execute_remotely", type=str, default='',
+                        help="Execute task remotely on queue-name [execute_remotely] (default: )")
     parser.add_argument("--eval_model", type=str, default='LR',
                         help="Model for evaluation metrics (default: LR - LogisticRegression)")
     parser.add_argument("--config_dir", default="configs",
@@ -148,7 +154,7 @@ def main():
                                'no_cuda', 'seed'],
                           "dataset_args":
                               ['dataset', 'data_dir', 'batch', 'age_low', 'age_high', 'sensattr', 'only_download_data',
-                               'seed', 'predattr'],
+                               'seed', 'predattr', 'alt_link_dataset'],
                           "privacy_args":
                               ['privacy_in', 'delta', 'eps', 'max_grad_norm'],
                           "trainer_args":
@@ -157,7 +163,7 @@ def main():
                                'lr_enc_class', 'lr_adv', 'check_acc_fair', 'enc_class_sch', 'adv_sch',
                                'enc_class_sch_pow', 'adv_sch_pow', 'eval_model', 'offline_mode',
                                'check_acc_fair_attempts', 'config_dir', 'server', 'acc_tresh', 'dp_atol', 'eod_atol',
-                               'predattr']
+                               'predattr', 'execute_remotely']
                           }
 
     laftr_model_args, dataset_args, privacy_args, trainer_args = \
