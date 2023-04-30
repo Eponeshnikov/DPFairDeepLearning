@@ -8,7 +8,7 @@ import json
 
 
 class CMLogger:
-    def __init__(self, model_name, dataset_name, credentials, offline=False):
+    def __init__(self, model_name, dataset_name, credentials, exec_remote='', offline=False):
         if offline:
             Task.set_offline(offline_mode=True)
         api_server, web_server, files_server, access_key, secret_key = get_credentials(credentials[0], credentials[1])
@@ -28,6 +28,8 @@ class CMLogger:
         self.params_dictionary = {}
         self.task.connect(self.params_dictionary)
         self.logger = Logger.current_logger()
+        if len(exec_remote) > 0:
+            self.task.execute_remotely(queue_name=exec_remote)
 
     def log_metric(self, graph_name, metric_name, value, step):
         self.logger.report_scalar(graph_name, metric_name, value, step)

@@ -13,18 +13,19 @@ repeats = 1
 random_seed = True
 no_cuda = False
 check_acc_fair = True
-check_acc_fair_attempts = [5]  # 40
+check_acc_fair_attempts = [3]  # 40
 acc_tresh = [0.5]  # 44
 dp_atol = [0.02]  # 45
 eod_atol = [0.02]  # 46
-show_py_command = False
-not_run = False
+show_py_command = True
+not_run = True
 continue_from = 0
 continue_to = None  # None to end of list
 test_mode = 0  # |~(16, 34)~|
 offline_mode = False  # !!!Not works with check_acc_fair if condition pass!!!
 config_dir = ['configs']  # 42
 server = [None]  # 43
+execute_remotely = ['']  # 48
 # ================================
 # ======= Model parameters =======
 arch = ['DP', 'EOD']  # 0
@@ -48,8 +49,9 @@ xavier = [True]  # 17
 # ================================
 # ====== Dataset parameters ======
 data_dir = ['dataset']  # 41
+alt_link_dataset = ['', '', '', '']  # 49
 dataset = ['Adult', 'German', 'CelebA', 'CelebA']  # 18
-batch = ['max', 'max', 40000, 40000]  # 19
+batch = ['max', 'max', 20000, 20000]  # 19
 sensattr = ['sex', 'sex', 'Young', 'Eyeglasses']  # 20
 predattr = ['Risk_good', 'income_>50K', 'No_Beard', 'Young']  # 46
 ages = [(71, 75)]  # 21
@@ -68,8 +70,8 @@ grad_clip_adv = [10]  # 29
 grad_clip_class = [10]  # 30
 optimizer_enc_class = ['NAdam']  # 31
 optimizer_adv = ['NAdam']  # 32
-lr_enc_class = [0.14, 0.13]  # 33
-lr_adv = [0.14, 0.13]  # 34
+lr_enc_class = [0.14, 0.14]  # 33
+lr_adv = [0.14, 0.14]  # 34
 enc_class_sch = ['PolynomialLR']  # 35
 adv_sch = ['PolynomialLR']  # 36
 enc_class_sch_pow = [1]  # 37
@@ -77,7 +79,7 @@ adv_sch_pow = [1]  # 38
 eval_model = ['LR']  # 39
 # ========== Link params =========
 conds = [{4: awidths, 3: adepth, 33: lr_enc_class, 34: lr_adv},
-         {18: dataset, 25: epoch, 47: predattr, 20: sensattr, 19: batch}]
+         {18: dataset, 25: epoch, 47: predattr, 20: sensattr, 19: batch, 49: alt_link_dataset}]
 # ================================
 
 all_exp = list(
@@ -87,7 +89,7 @@ all_exp = list(
         privacy_in, eps, max_grad_norm, epoch, adv_on_batch, eval_step_fair, grad_clip_ae, grad_clip_adv,
         grad_clip_class, optimizer_enc_class, optimizer_adv, lr_enc_class, lr_adv, enc_class_sch, adv_sch,
         enc_class_sch_pow, adv_sch_pow, eval_model, check_acc_fair_attempts, data_dir, config_dir, server,
-        acc_tresh, dp_atol, eod_atol, predattr
+        acc_tresh, dp_atol, eod_atol, predattr, execute_remotely, alt_link_dataset
     )
 )
 
@@ -114,7 +116,8 @@ param_names = [
     'dataset', 'batch', 'sensattr', 'ages', 'privacy_in', 'eps', 'max_grad_norm', 'epoch', 'adv_on_batch',
     'eval_step_fair', 'grad_clip_ae', 'grad_clip_adv', 'grad_clip_class', 'optimizer_enc_class', 'optimizer_adv',
     'lr_enc_class', 'lr_adv', 'enc_class_sch', 'adv_sch', 'enc_class_sch_pow', 'adv_sch_pow', 'eval_model',
-    'check_acc_fair_attempts', 'data_dir', 'config_dir', 'server', 'acc_tresh', 'dp_atol', 'eod_atol', 'predattr'
+    'check_acc_fair_attempts', 'data_dir', 'config_dir', 'server', 'acc_tresh', 'dp_atol', 'eod_atol', 'predattr',
+    'execute_remotely', 'alt_link_dataset'
 ]
 
 if random_seed:
@@ -126,11 +129,22 @@ if continue_to is None:
     continue_to = len(all_exp * repeats)
 print(f'Total number of experiments: {len((all_exp * repeats)[continue_from:continue_to])}')
 
+
 # ======= Download datasets ======
-for ds in dataset:
+def use_zip(dataset_, alt_link_dataset_):
+    if len(dataset_) == len(alt_link_dataset_):
+        return True
+    else:
+        return False
+
+
+data = zip(dataset, alt_link_dataset) if use_zip(dataset, alt_link_dataset) \
+    else zip(dataset, np.repeat(alt_link_dataset[0], len(dataset)))
+for ds, alt_link in data:
     for data_dir_ in data_dir:
-        dataset_args_ = make_dataclass('dataset_args', ['dataset', 'data_dir', 'only_download_data'])
-        dataset_args = dataset_args_(ds, data_dir_, True)
+        dataset_args_ = make_dataclass('dataset_args', ['dataset', 'data_dir',
+                                                        'only_download_data', 'alt_link_dataset'])
+        dataset_args = dataset_args_(ds, data_dir_, True, alt_link)
         d = Dataset(dataset_args)
         d.download_data()
 # ================================
