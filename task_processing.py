@@ -1,9 +1,8 @@
-from numpy import ndarray
 from tqdm import tqdm
 import ast
 import pickle
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -161,7 +160,7 @@ def gen_bar_name(arch, privacy_in, awidth):
     if awidth == 32:
         name += 'Adversary = Classifier'
     elif awidth == 64:
-        name += 'Adversary > Classsifier'
+        name += 'Adversary > Classifier'
     return name
 
 
@@ -419,6 +418,15 @@ def plot_ttest_matrix(res, dataset_, metric, scalar='Model test', p_val=0.05, sa
                     t[i[0]][j[0]] = -1
             else:
                 t[i[0]][j[0]] = 0
+    text = []
+    for i_num, i in enumerate(t):
+        for j_num, j in enumerate(t[i_num]):
+            f_name = res['Name'][i_num]
+            s_name = res['Name'][j_num]
+            if t[i_num][j_num] == 1:
+                text.append(f'{f_name} bigger than {s_name}\n')
+            elif t[i_num][j_num] == -1:
+                text.append(f'{f_name} less than {s_name}\n')
     f = plt.figure(figsize=(19, 19))
     ax = f.add_subplot(111)
     metric = metric if scalar == 'Model test' else f'Acc/Fair Δ{scalar}'
@@ -436,6 +444,11 @@ def plot_ttest_matrix(res, dataset_, metric, scalar='Model test', p_val=0.05, sa
     ax.set_xticklabels(res['Name'], rotation=90)
     ax.set_yticklabels(res['Name'])
     plt.tight_layout()
+    metric_name = '_'.join(metric.split('/'))
+    res.to_pickle(f'pkl/{dataset_}_{metric_name}.pkl')
+    if save:
+        with open(f'{dataset_}_{metric_name}.txt', 'w') as fp:
+            fp.writelines(text)
     if save:
         metric_name = '_'.join(metric.split('/'))
         name = f'{dataset_}_{metric_name}_mat.jpg'
